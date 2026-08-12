@@ -16,6 +16,12 @@ const Icon = ({ name, size = 18 }) => {
 function App() {
   const [activeTab, setActiveTab] = useState('Directory');
   const navItems = ['Directory', 'Feed', 'Jobs', 'Opportunities', 'Events', 'Mentorship'];
+  const quickActions = [
+    { icon: 'user', title: 'Find Classmates', text: 'Reconnect with fellow NDDU graduates.', action: 'Browse directory' },
+    { icon: 'briefcase', title: 'Explore Careers', text: 'Discover opportunities shared by alumni.', action: 'View jobs' },
+    { icon: 'pin', title: 'Attend Events', text: 'Join reunions, homecoming, and gatherings.', action: 'See events' },
+    { icon: 'chart', title: 'Give Back', text: 'Share your knowledge through mentorship.', action: 'Become a mentor' },
+  ];
   const feedItems = [
     { category: 'University News', time: '2 hours ago', title: 'New Research Wing Inauguration', text: 'The university has officially opened the state-of-the-art research facility dedicated to sustainable energy...' },
     { category: 'Alumni Spotlight', time: 'Yesterday', title: "Class of '15 CEO featured in Fortune", text: 'Jane Doe discusses her journey from the computer science labs to leading a tech giant...' },
@@ -32,7 +38,10 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top">AlumniConnect</a>
+        <a className="brand" href="#top" aria-label="Notre Dame of Dadiangas University Alumni home">
+          <img src="https://www.nddu.edu.ph/wp-content/uploads/2021/06/cropped-NDDU-Site-Favicon.png" alt="Notre Dame of Dadiangas University seal" />
+          <span><em>Notre Dame of Dadiangas University</em><strong>ALUMNI</strong></span>
+        </a>
         <nav className="main-nav" aria-label="Primary navigation">
           {navItems.map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => setActiveTab(item)}>{item}</button>)}
         </nav>
@@ -45,29 +54,34 @@ function App() {
 
       <main id="top">
         <section className="hero-section">
-          <div className="hero-copy">
-            <h1>Welcome, Alumni</h1>
-            <p>Stay connected, find opportunities, and give back to your community.</p>
-            <div className="hero-actions">
-              <button className="dark-button">View Your Profile</button>
-              <button className="text-button">Find Classmates</button>
-            </div>
+          <div className="hero-background" aria-hidden="true">
+            <img src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1800&q=90" alt="" />
           </div>
-          <div className="hero-portrait" aria-label="Alumni networking at a university event">
-            <img src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1100&q=85" alt="Alumni friends smiling together" />
-            <div className="portrait-overlay"><span>Building connections</span><strong>for life.</strong></div>
+          <div className="hero-copy">
+            <p className="eyebrow">Notre Dame of Dadiangas University</p>
+            <h1>Welcome home, Alumni.</h1>
+            <p>Reconnect with classmates, discover opportunities, and continue making a difference in the NDDU community.</p>
+            <div className="hero-actions">
+              <button className="dark-button">Join the Alumni Network</button>
+              <button className="text-button">Explore the Directory</button>
+            </div>
           </div>
         </section>
 
         <div className="content-grid">
+          <section className="quick-section panel-wide">
+            <div className="section-intro"><p className="eyebrow green">Start here</p><h2>Stay connected in the ways that matter most.</h2><p>Simple tools to help you reconnect, grow your career, and support fellow alumni.</p></div>
+            <div className="quick-grid">{quickActions.map((item) => <article className="quick-card" key={item.title}><span className="quick-icon"><Icon name={item.icon} size={25} /></span><h3>{item.title}</h3><p>{item.text}</p><button className="card-link">{item.action} <Icon name="arrow" size={17} /></button></article>)}</div>
+          </section>
+          <section className="impact-section panel-wide"><div><p className="eyebrow">Our growing community</p><h2>Connected by faith, friendship, and shared purpose.</h2></div><div className="impact-grid"><div><strong>12,000+</strong><span>NDDU alumni</span></div><div><strong>180+</strong><span>Mentors ready to help</span></div><div><strong>40+</strong><span>Career opportunities</span></div><div><strong>12</strong><span>Upcoming gatherings</span></div></div></section>
           <section className="panel feed-panel">
-            <div className="section-title"><h2>Latest from the feed</h2><button className="text-button small">View All</button></div>
+            <div className="section-title"><h2>From NDDU</h2><button className="text-button small">View All</button></div>
             <div className="feed-list">
               {feedItems.map((item) => <article className="feed-card" key={item.title}><div className="meta"><span>{item.category}</span><time>{item.time}</time></div><h3>{item.title}</h3><p>{item.text}</p></article>)}
             </div>
           </section>
           <section className="panel jobs-panel">
-            <div className="section-title"><h2>Featured jobs</h2><button className="text-button small">View All</button></div>
+            <div className="section-title"><h2>Featured careers</h2><button className="text-button small">View All</button></div>
             <div className="job-list">
               {jobs.map((job) => <button className="job-card" key={job.title}><span className="job-icon"><Icon name={job.icon} /></span><span><strong>{job.title}</strong><small>{job.company}</small></span><Icon name="arrow" /></button>)}
             </div>
@@ -79,9 +93,10 @@ function App() {
             </div>
           </section>
           <section className="panel story-panel">
-            <div className="section-title"><h2>Success stories</h2><button className="text-button small">Read More</button></div>
+            <div className="section-title"><h2>Alumni stories</h2><button className="text-button small">Read More</button></div>
             <article className="story-card"><img src="https://i.pravatar.cc/120?img=47" alt="Robert Chen" /><div><blockquote>“My degree was the foundation...”</blockquote><p className="author">— Robert Chen, Class of ’08</p></div><p className="quote-copy">“The mentorship program at AlumniConnect helped me navigate my early career challenges and eventually launch my own startup...”</p></article>
           </section>
+          <section className="join-section panel-wide"><div><p className="eyebrow">Your NDDU community is here</p><h2>Keep your alumni story moving forward.</h2><p>Update your details, discover what is new, and stay close to the people who shared your NDDU journey.</p></div><button className="dark-button">Create Your Alumni Profile</button></section>
         </div>
       </main>
 
