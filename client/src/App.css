@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+:root { font-family: 'DM Sans', Arial, sans-serif; color: #202124; background: #f7f7f5; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #f7f7f5; }
+button, a { font: inherit; color: inherit; }
+button { border: 0; cursor: pointer; background: none; }
+a { text-decoration: none; }
+.app-shell { min-height: 100vh; width: 100%; background: #f8f8f7; }
+.topbar { height: 74px; padding: 0 42px; display: flex; align-items: center; gap: 38px; border-bottom: 1px solid #dededb; background: #fff; }
+.brand { font-size: 19px; font-weight: 700; letter-spacing: -.9px; white-space: nowrap; }
+.main-nav { display: flex; align-items: stretch; gap: 26px; height: 100%; margin-left: auto; }
+.main-nav button { position: relative; color: #686970; font-size: 14px; padding: 2px 0 0; white-space: nowrap; }
+.main-nav button.active { color: #161719; font-weight: 600; }
+.main-nav button.active::after { content: ''; position: absolute; height: 2px; background: #151515; bottom: 12px; left: 0; right: 0; }
+.header-actions { display: flex; align-items: center; gap: 15px; margin-left: 22px; }
+.icon-button { color: #5d5f63; padding: 3px; display: grid; place-items: center; }
+.avatar { width: 34px; height: 34px; object-fit: cover; border-radius: 50%; border: 1px solid #999; }
+main { width: min(1440px, 100%); margin: 0 auto; padding: 0 46px 28px; }
+.hero-section { min-height: 270px; display: grid; grid-template-columns: 1.2fr .8fr; align-items: center; gap: 38px; border-bottom: 1px solid #d9d9d6; }
+.hero-copy h1 { margin: 0; font-size: clamp(32px, 3vw, 44px); font-weight: 500; letter-spacing: -1.7px; }
+.hero-copy > p { margin: 8px 0 0; color: #696a70; font-size: 15px; }
+.hero-actions { display: flex; gap: 23px; align-items: center; margin-top: 30px; }
+.dark-button { background: #111; color: #fff; padding: 12px 27px; font-size: 12px; font-weight: 600; }
+.text-button { font-size: 12px; font-weight: 600; padding: 8px 0; }
+.hero-portrait { height: 207px; overflow: hidden; position: relative; background: #deded8; }
+.hero-portrait img { height: 100%; width: 100%; object-fit: cover; object-position: center 44%; filter: saturate(.78); }
+.portrait-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 11%; text-align: right; color: #fff; text-shadow: 0 1px 13px #000; font-family: 'Playfair Display', serif; font-size: 25px; line-height: 1.1; }
+.portrait-overlay strong { font-size: 37px; }
+.content-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 42px; row-gap: 39px; padding-top: 38px; }
+.section-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 17px; }
+.section-title h2 { margin: 0; color: #62636a; font-size: 16px; letter-spacing: .65px; text-transform: uppercase; }
+.small { font-size: 11px; }
+.feed-list, .job-list { display: grid; gap: 16px; }
+.feed-card, .job-card, .event-card, .story-card { background: #fff; }
+.feed-card { padding: 23px 24px 24px; min-height: 126px; }
+.meta { display: flex; justify-content: space-between; color: #6b6c72; font-size: 11px; font-weight: 600; }
+.feed-card h3 { font-size: 14px; margin: 13px 0 8px; font-weight: 500; }
+.feed-card p { color: #6b6c72; margin: 0; max-width: 520px; font-size: 12px; line-height: 1.45; }
+.job-card { width: 100%; padding: 19px 21px; min-height: 82px; display: grid; grid-template-columns: 42px 1fr 18px; gap: 15px; align-items: center; text-align: left; color: #303136; }
+.job-card > span:nth-child(2) { display: grid; gap: 3px; }.job-card strong { font-size: 14px; font-weight: 500; }.job-card small { color: #686a70; font-size: 12px; }.job-card > svg { color: #505158; justify-self: end; }
+.job-icon { width: 39px; height: 39px; display: grid; place-items: center; background: #ededed; }
+.events-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.event-card { min-height: 115px; padding: 20px 18px; }.event-card time { display: inline-block; background: #121212; color: white; padding: 3px 7px; font-size: 9px; font-weight: 600; }.event-card h3 { margin: 10px 0 7px; font-size: 14px; }.event-card p { margin: 0; color: #77787d; display: flex; gap: 3px; align-items: center; font-size: 12px; }
+.story-card { min-height: 160px; padding: 21px 22px; display: grid; grid-template-columns: 49px 1fr; gap: 15px; align-content: start; }.story-card img { width: 49px; height: 49px; object-fit: cover; border-radius: 50%; filter: grayscale(1); }.story-card blockquote { font-size: 15px; margin: 5px 0 2px; }.author { margin: 0; color: #77787e; font-size: 11px; }.quote-copy { grid-column: 1/-1; margin: 11px 0 0; font-family: Georgia, serif; font-size: 12px; font-style: italic; line-height: 1.35; }
+.site-footer { min-height: 105px; padding: 21px 57px; border-top: 1px solid #cbcbc9; background: #f0f0ef; display: flex; align-items: center; justify-content: space-between; gap: 25px; color: #696a70; font-size: 11px; }.site-footer strong { font-size: 10px; letter-spacing: .6px; }.site-footer p { margin: 9px 0 0; }.footer-links { display: flex; gap: 31px; }
+@media (max-width: 1020px) { .topbar { padding: 0 25px; gap: 20px; }.main-nav { gap: 17px; }.header-actions { margin-left: 5px; }.hero-section { grid-template-columns: 1fr .75fr; }.content-grid { gap: 28px; } }
+@media (max-width: 760px) { .topbar { height: auto; padding: 18px 22px; flex-wrap: wrap; }.main-nav { order: 3; width: 100%; overflow-x: auto; margin: 0; height: 34px; gap: 20px; }.main-nav button.active::after { bottom: 0; }.header-actions { margin-left: auto; } main { padding: 0 22px 26px; }.hero-section { grid-template-columns: 1fr; gap: 27px; padding: 38px 0 27px; }.hero-portrait { height: 185px; }.content-grid { grid-template-columns: 1fr; padding-top: 28px; row-gap: 30px; }.site-footer { padding: 22px; align-items: flex-start; flex-direction: column; }.footer-links { flex-wrap: wrap; gap: 16px 22px; } }
+@media (max-width: 430px) { .header-actions .icon-button { display: none; }.events-list { grid-template-columns: 1fr; }.hero-copy > p { line-height: 1.45; }.portrait-overlay { font-size: 20px; }.portrait-overlay strong { font-size: 29px; } }
