@@ -69,7 +69,7 @@ function App() {
   const [showRegister, setShowRegister] = useState(false);
 
   // Navigation state
-  const [activeTab, setActiveTab] = useState('Directory');
+  const [activeTab, setActiveTab] = useState('Homepage');
 
   // Supabase connection state
   const [supabaseStatus, setSupabaseStatus] = useState(
@@ -95,7 +95,7 @@ function App() {
   }, []);
 
   const navItems = [
-    'Directory',
+    'Home',
     'Feed',
     'Jobs',
     'Opportunities',
@@ -173,7 +173,7 @@ function App() {
 
   // Show registration page
   if (showRegister) {
-    return <Register />;
+    return <Register onBack={() => { setShowRegister(false); setActiveTab('Homepage'); }} onNavigate={(page) => { setShowRegister(false); setActiveTab(page); }} />;
   }
 
   return (
@@ -182,6 +182,10 @@ function App() {
         <a
           className="brand"
           href="#top"
+          onClick={(e) => {
+            e.preventDefault();
+            setActiveTab('Homepage');
+          }}
           aria-label="Notre Dame of Dadiangas University Alumni home"
         >
           <img
@@ -260,11 +264,7 @@ function App() {
                     className="dark-button"
                     onClick={() => setShowRegister(true)}
                   >
-                    Join the Alumni Network
-                  </button>
-
-                  <button className="text-button">
-                    Explore the Directory
+                  Create Your Alumni Profile
                   </button>
                 </div>
               </div>
@@ -474,13 +474,6 @@ function App() {
                     close to the people who shared your NDDU journey.
                   </p>
                 </div>
-
-                <button
-                  className="dark-button"
-                  onClick={() => setShowRegister(true)}
-                >
-                  Create Your Alumni Profile
-                </button>
               </section>
             </div>
           </>
