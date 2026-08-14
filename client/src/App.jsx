@@ -1,5 +1,6 @@
 import { useState,useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
+import Feed from './components/Feed.jsx';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -74,20 +75,24 @@ function App() {
       </header>
 
       <main id="top">
-        <section className="hero-section">
-          <div className="hero-background" aria-hidden="true">
-            <img src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1800&q=90" alt="" />
-          </div>
-          <div className="hero-copy">
-            <p className="eyebrow">Notre Dame of Dadiangas University</p>
-            <h1>Welcome home, Alumni.</h1>
-            <p>Reconnect with classmates, discover opportunities, and continue making a difference in the NDDU community.</p>
-            <div className="hero-actions">
-              <button className="dark-button">Join the Alumni Network</button>
-              <button className="text-button">Explore the Directory</button>
-            </div>
-          </div>
-        </section>
+        {activeTab === 'Feed' ? (
+          <Feed />
+        ) : (
+          <>
+            <section className="hero-section">
+              <div className="hero-background" aria-hidden="true">
+                <img src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1800&q=90" alt="" />
+              </div>
+              <div className="hero-copy">
+                <p className="eyebrow">Notre Dame of Dadiangas University</p>
+                <h1>Welcome home, Alumni.</h1>
+                <p>Reconnect with classmates, discover opportunities, and continue making a difference in the NDDU community.</p>
+                <div className="hero-actions">
+                  <button className="dark-button">Join the Alumni Network</button>
+                  <button className="text-button">Explore the Directory</button>
+                </div>
+              </div>
+            </section>
 
         <div className="content-grid">
           <section className="quick-section panel-wide">
@@ -119,6 +124,8 @@ function App() {
           </section>
           <section className="join-section panel-wide"><div><p className="eyebrow">Your NDDU community is here</p><h2>Keep your alumni story moving forward.</h2><p>Update your details, discover what is new, and stay close to the people who shared your NDDU journey.</p></div><button className="dark-button">Create Your Alumni Profile</button></section>
         </div>
+          </>
+        )}
       </main>
 
       <footer className="site-footer"><div><strong>ALUMNICONNECT</strong><p>© 2024 Alumni Management System. All rights reserved.</p></div><div className="footer-links"><a href="#privacy">Privacy Policy</a><a href="#terms">Terms of Service</a><a href="#support">Contact Support</a></div></footer>
