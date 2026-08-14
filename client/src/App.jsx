@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
+import { supabase } from './lib/supabase.js';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -15,13 +16,33 @@ const Icon = ({ name, size = 18 }) => {
 
 function App() {
   const [activeTab, setActiveTab] = useState('Directory');
+  const [supabaseStatus, setSupabaseStatus] = useState('Checking Supabase connection...');
+        useEffect(() => {
+    async function testSupabase() {
+      const { error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error('Supabase connection error:', error);
+        setSupabaseStatus(`Supabase error: ${error.message}`);
+        return;
+      }
+
+      console.log('Supabase connected successfully!');
+      setSupabaseStatus('Supabase connected successfully!');
+    }
+
+    testSupabase();
+  }, []);
+
   const navItems = ['Directory', 'Feed', 'Jobs', 'Opportunities', 'Events', 'Mentorship'];
+
   const quickActions = [
     { icon: 'user', title: 'Find Classmates', text: 'Reconnect with fellow NDDU graduates.', action: 'Browse directory' },
     { icon: 'briefcase', title: 'Explore Careers', text: 'Discover opportunities shared by alumni.', action: 'View jobs' },
     { icon: 'pin', title: 'Attend Events', text: 'Join reunions, homecoming, and gatherings.', action: 'See events' },
     { icon: 'chart', title: 'Give Back', text: 'Share your knowledge through mentorship.', action: 'Become a mentor' },
   ];
+
   const feedItems = [
     { category: 'University News', time: '2 hours ago', title: 'New Research Wing Inauguration', text: 'The university has officially opened the state-of-the-art research facility dedicated to sustainable energy...' },
     { category: 'Alumni Spotlight', time: 'Yesterday', title: "Class of '15 CEO featured in Fortune", text: 'Jane Doe discusses her journey from the computer science labs to leading a tech giant...' },
