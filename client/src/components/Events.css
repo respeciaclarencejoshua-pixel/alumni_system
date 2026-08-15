@@ -1,0 +1,358 @@
+.events-page-shell {
+  min-height: calc(100vh - 82px);
+  background: #f5f4f1;
+  color: #1f2d27;
+  font-family: 'DM Sans', Arial, sans-serif;
+}
+
+.events-page-content {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 22px 42px;
+}
+
+.events-page-title-block {
+  margin-bottom: 24px;
+}
+
+.events-page-title-block h1 {
+  margin: 0;
+  color: #1d1d1d;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+}
+
+.events-page-title-block p {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: #4b5d56;
+  font-size: 1.04rem;
+  line-height: 1.6;
+}
+
+.events-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.events-sidebar {
+  padding: 18px 16px;
+  border: 1px solid #d9d5d0;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.filter-group {
+  padding: 0 0 18px;
+  border-bottom: 1px solid #ddd8d3;
+  margin-bottom: 18px;
+}
+
+.filter-group:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.filter-group h2 {
+  margin: 0 0 12px;
+  color: #303d36;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+  color: #37443f;
+  font-size: 0.95rem;
+}
+
+.filter-option input {
+  accent-color: #1d1d1d;
+}
+
+.location-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid #d1d0cd;
+  background: #f8f7f5;
+  color: #1d1d1d;
+  font: inherit;
+}
+
+.events-main-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.featured-event-card {
+  display: grid;
+  grid-template-columns: minmax(230px, 330px) minmax(0, 1fr);
+  gap: 28px;
+  padding: 28px;
+  border: 1px solid #d9d6d1;
+  background: #f3f1ee;
+}
+
+.featured-image {
+  display: grid;
+  place-items: center;
+  min-height: 280px;
+  border: 1px solid #d1d0cd;
+  background: #ebebea;
+  color: rgba(24, 26, 28, 0.55);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.featured-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.featured-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 7px 10px;
+  border: 1px solid #2d2a2a;
+  background: #f4f3f1;
+  color: #1d1d1d;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.featured-copy h2 {
+  margin: 16px 0 8px;
+  color: #1a201d;
+  font-size: clamp(1.7rem, 2vw, 2.5rem);
+  font-weight: 700;
+}
+
+.event-date-line,
+.event-place-line,
+.event-description,
+.mini-event-meta,
+.mini-event-description {
+  margin: 0;
+  color: #4f5d58;
+  line-height: 1.6;
+}
+
+.event-place-line {
+  margin-top: 6px;
+}
+
+.event-description {
+  margin-top: 12px;
+  max-width: 620px;
+}
+
+.cta-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.primary-action,
+.secondary-action,
+.register-button,
+.session-arrow {
+  min-height: 42px;
+  border: 1px solid #202c27;
+  border-radius: 0;
+  background: #fff;
+  color: #1d1d1d;
+  font: inherit;
+  font-weight: 700;
+  transition: transform 0.15s ease;
+}
+
+.primary-action {
+  padding: 0 18px;
+  background: #1d1d1d;
+  color: #fff;
+}
+
+.secondary-action {
+  padding: 0 16px;
+  background: transparent;
+}
+
+.primary-action:hover,
+.secondary-action:hover,
+.register-button:hover,
+.session-arrow:hover {
+  transform: translateY(-1px);
+}
+
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mini-event-card {
+  border: 1px solid #d8d3ce;
+  background: #f4f2f0;
+  overflow: hidden;
+}
+
+.mini-event-image {
+  display: grid;
+  place-items: center;
+  min-height: 190px;
+  border-bottom: 1px solid #d8d3ce;
+  background: #eceae7;
+  color: rgba(24, 26, 28, 0.55);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mini-event-body {
+  padding: 18px 18px 22px;
+}
+
+.mini-event-body h3 {
+  margin: 0;
+  color: #1b201d;
+  font-size: 1.15rem;
+}
+
+.mini-event-meta {
+  margin-top: 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.mini-event-description {
+  margin-top: 10px;
+  font-size: 0.96rem;
+}
+
+.register-button {
+  width: 100%;
+  margin-top: 18px;
+  background: #f6f0e7;
+}
+
+.other-session-list {
+  border-top: 1px solid #d7d0c8;
+  padding-top: 10px;
+}
+
+.other-session-list h3 {
+  margin: 0 0 12px;
+  color: #2a332f;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.session-item {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #d7d0c8;
+}
+
+.session-date {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 64px;
+  border: 1px solid #d1d0cd;
+  background: #f5f3f0;
+  color: #1d1d1d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.session-date strong {
+  margin-top: 4px;
+  font-size: 0.72rem;
+}
+
+.session-summary h4 {
+  margin: 0;
+  color: #1d1d1d;
+  font-size: 1.15rem;
+}
+
+.session-summary p {
+  margin: 5px 0 0;
+  color: #5d6a63;
+}
+
+.session-arrow {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.events-empty-state {
+  padding: 42px 20px;
+  border: 1px solid #d9d6d1;
+  background: #f8f6f3;
+  color: #465851;
+  text-align: center;
+}
+
+.muted-item {
+  border-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .events-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .featured-event-card {
+    grid-template-columns: 1fr;
+  }
+
+  .event-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .events-page-content {
+    padding-inline: 14px;
+  }
+
+  .featured-event-card {
+    padding: 20px;
+  }
+
+  .cta-row {
+    flex-direction: column;
+  }
+
+  .session-item {
+    grid-template-columns: 64px minmax(0, 1fr) 32px;
+    gap: 12px;
+  }
+
+  .session-summary h4 {
+    font-size: 1rem;
+  }
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
+import Events from './components/Events.jsx';
 import Register from './Register.jsx';
 import Login from './Login.jsx';
 import Profile from './components/Profile.jsx';
@@ -240,7 +241,9 @@ function App() {
       </header>
 
       <main id="top">
-        {activeTab === 'Feed' ? <Feed user={user} profile={accountProfile} /> : (
+        {activeTab === 'Feed' ? (
+          <Feed />
+        ) : (
           <>
             <section className="hero-section">
               <div className="hero-background" aria-hidden="true">
