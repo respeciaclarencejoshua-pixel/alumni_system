@@ -159,9 +159,12 @@ function App() {
     },
   ];
 
-  // Show registration page
-  if (showRegister) {
-    return <Register />;
+  if (authView === 'register') {
+    return <Register onLogin={() => setAuthView('login')} onClose={() => setAuthView(null)} />;
+  }
+
+  if (authView === 'login') {
+    return <Login onRegister={() => setAuthView('register')} onClose={() => setAuthView(null)} />;
   }
 
   return (
