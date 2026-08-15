@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
 import Register from './Register.jsx';
+import Login from './Login.jsx';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -65,34 +66,21 @@ const Icon = ({ name, size = 18 }) => {
 };
 
 function App() {
-  // Registration page state
-  const [showRegister, setShowRegister] = useState(false);
+  const [authView, setAuthView] = useState(null);
+  const [user, setUser] = useState(null);
 
   // Navigation state
   const [activeTab, setActiveTab] = useState('Directory');
 
-  // Supabase connection state
-  const [supabaseStatus, setSupabaseStatus] = useState(
-    'Checking Supabase connection...'
-  );
-
-  // Test Supabase connection
   useEffect(() => {
-    async function testSupabase() {
-      const { error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error('Supabase connection error:', error);
-        setSupabaseStatus(`Supabase error: ${error.message}`);
-        return;
-      }
-
-      console.log('Supabase connected successfully!');
-      setSupabaseStatus('Supabase connected successfully!');
-    }
-
-    testSupabase();
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    return () => subscription.unsubscribe();
   }, []);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+  }
 
   const navItems = [
     'Directory',
@@ -171,10 +159,8 @@ function App() {
     },
   ];
 
-  // Show registration page
-  if (showRegister) {
-    return <Register />;
-  }
+  if (authView === 'register') return <Register onLogin={() => setAuthView('login')} onClose={() => setAuthView(null)} />;
+  if (authView === 'login') return <Login onRegister={() => setAuthView('register')} onClose={() => setAuthView(null)} />;
 
   return (
     <div className="app-shell">
@@ -208,25 +194,7 @@ function App() {
         </nav>
 
         <div className="header-actions">
-          <button
-            aria-label="Notifications"
-            className="icon-button"
-          >
-            <Icon name="bell" />
-          </button>
-
-          <button
-            aria-label="Settings"
-            className="icon-button"
-          >
-            <Icon name="settings" />
-          </button>
-
-          <img
-            className="avatar"
-            src="https://i.pravatar.cc/80?img=12"
-            alt="Your profile"
-          />
+          {user ? <><button aria-label="Notifications" className="icon-button"><Icon name="bell" /></button><button aria-label="Settings" className="icon-button"><Icon name="settings" /></button><span className="signed-in-email">{user.email}</span><button className="header-auth-button" onClick={signOut}>Sign out</button></> : <><button className="header-auth-button" onClick={() => setAuthView('login')}>Log in</button><button className="header-auth-button header-auth-button-primary" onClick={() => setAuthView('register')}>Join now</button></>}
         </div>
       </header>
 
@@ -258,7 +226,7 @@ function App() {
                 <div className="hero-actions">
                   <button
                     className="dark-button"
-                    onClick={() => setShowRegister(true)}
+                    onClick={() => setAuthView('register')}
                   >
                     Join the Alumni Network
                   </button>
@@ -477,7 +445,7 @@ function App() {
 
                 <button
                   className="dark-button"
-                  onClick={() => setShowRegister(true)}
+                  onClick={() => setAuthView('register')}
                 >
                   Create Your Alumni Profile
                 </button>

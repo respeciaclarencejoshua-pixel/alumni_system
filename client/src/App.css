@@ -165,6 +165,10 @@ a:focus-visible {
   gap: 8px;
 }
 
+.header-auth-button { min-height: 38px; padding: 7px 12px; border: 1px solid rgb(255 255 255 / 55%); border-radius: 4px; color: var(--color-white); font-size: .84rem; font-weight: 700; }
+.header-auth-button-primary { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-primary); }
+.signed-in-email { max-width: 160px; overflow: hidden; color: var(--color-nav-text); font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
+
 .icon-button {
   display: grid;
   width: 44px;
@@ -280,6 +284,19 @@ main {
 .dark-button:hover {
   background: var(--color-accent-dark);
 }
+
+/* Authentication */
+.auth-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: var(--color-surface-light); }
+.auth-card { width: min(100%, 480px); padding: clamp(28px, 6vw, 46px); border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-white); box-shadow: var(--shadow-card); }
+.register-header h1 { margin: 0; color: var(--color-primary); font-family: var(--font-display); font-size: clamp(2rem, 5vw, 2.6rem); }
+.register-header > p:last-child { margin: 10px 0 0; color: var(--color-text-muted); }
+.register-form { display: grid; gap: 16px; margin-top: 28px; }
+.register-form > div { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.register-form label { display: grid; gap: 6px; color: var(--color-text); font-size: .83rem; font-weight: 700; }
+.register-form input { width: 100%; min-height: 46px; padding: 9px 11px; border: 1px solid var(--color-border); border-radius: 4px; color: var(--color-text); font: inherit; font-weight: 400; }
+.form-error, .form-success { margin: 0; padding: 10px; border-radius: 4px; font-size: .82rem; }
+.form-error { background: #fff1f0; color: #b42318; }.form-success { background: #edf5ee; color: #166534; }
+.register-button { width: 100%; }.auth-switch { margin: 0; color: var(--color-text-muted); font-size: .82rem; text-align: center; }.auth-switch button { color: var(--color-primary); font-weight: 700; text-decoration: underline; }.auth-back { display: block; margin: 23px auto 0; color: var(--color-text-muted); font-size: .82rem; text-decoration: underline; }
 
 .text-button {
   min-height: 44px;

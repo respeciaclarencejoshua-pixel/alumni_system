@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from './lib/supabase.js';
 
-function Register() { 
+function Register({ onLogin, onClose }) {
     const [form, setForm] = useState({
         firstName: '',
         lastName: '',
@@ -16,20 +16,26 @@ function Register() {
     const handleChange = (e) => { 
         setForm({
             ...form,
-            [event.target.name]: event.target.value,
+            [e.target.name]: e.target.value,
         });
     };
 
     const handleSubmit = async (e) => {
-        event.preventDefault();
+        e.preventDefault();
 
         setLoading(true);
         setMessage('');
         setError('');
 
-        const { data, error: signUpErrir } = await supabase.auth.signUp({
+        const { error: signUpError } = await supabase.auth.signUp({
             email: form.email,
             password: form.password,
+            options: {
+                data: {
+                    first_name: form.firstName,
+                    last_name: form.lastName,
+                },
+            },
         });
 
         if (signUpError) {
@@ -38,30 +44,8 @@ function Register() {
             return;
         }
         
-        const user = data.user;
-
-        if (!user) { 
-            setError('Registration failed. Please try again.');
-            setLoading(false);
-            return;
-        }
-
-        const { error: profileError } = await supabase.from('profiles').insert({
-            id:user.id,
-            first_name: form.firstName,
-            last_name: form.lastName,
-            email: form.email,
-            role: 'alumni',
-        });
-        
-        if (profileError) { 
-            setError(profileError.message);
-            setLoading(false);
-            return;
-        }
-
-        setMessage("Registration successful! Please check your email to confirm your account.");
-        setform({
+        setMessage('Registration successful! Check your email to confirm your account, then log in.');
+        setForm({
             firstName: '',
             lastName: '',
             email: '', 
@@ -72,13 +56,13 @@ function Register() {
     };
 
     return ( 
-        <div className = "register-page">
-            <div className = "register-card">
-                <div className = "register-header">
-                    <p className= "eyebrow green"> NDDU ALUMNI </p>
-                    <h1> Create your account ! </h1>
+        <main className="auth-page">
+            <section className="auth-card">
+            <div className = "register-header">
+                <p className= "eyebrow green"> NDDU ALUMNI </p>
+                    <h1>Create your account</h1>
                     <p> Join the NDDU Alumni Network and reconnect  with your community. </p>
-                </div>
+            </div>
                 <form onSubmit = {handleSubmit} className="register-form"> 
                     <div className = "form-group">
                         <label>First Name
@@ -90,9 +74,8 @@ function Register() {
                             required
                             />
                             </label>
-                         <label>
+                         <label>Last Name
                             <input
-                            Last Name 
                             type ="text"
                             name ="lastName"
                             value = {form.lastName}
@@ -139,10 +122,12 @@ function Register() {
                     disabled = {loading}
                         >
                             {loading ? 'Creating account.....': 'Create Account'}
-                        </button>
+                    </button>
+                    <p className="auth-switch">Already have an account? <button type="button" onClick={onLogin}>Log in</button></p>
                 </form>
-            </div>
-        </div>
+                <button className="auth-back" type="button" onClick={onClose}>← Back to website</button>
+            </section>
+        </main>
     );
 
 }
