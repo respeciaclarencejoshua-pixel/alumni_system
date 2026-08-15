@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
+import Opportunities from './components/Opportunities';
 import Events from './components/Events.jsx';
 import Register from './Register.jsx';
 import Login from './Login.jsx';
@@ -245,6 +246,8 @@ function App() {
           <Feed />
         ) : activeTab === 'Events' ? (
           <Events />
+        ) : activeTab === 'Opportunities' ? (
+          <Opportunities />
         ) : (
           <>
             <section className="hero-section">
