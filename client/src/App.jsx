@@ -243,6 +243,8 @@ function App() {
       <main id="top">
         {activeTab === 'Feed' ? (
           <Feed />
+        ) : activeTab === 'Events' ? (
+          <Events />
         ) : (
           <>
             <section className="hero-section">
