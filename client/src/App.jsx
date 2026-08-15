@@ -3,6 +3,8 @@ import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
 import Register from './Register.jsx';
 import Login from './Login.jsx';
+import Profile from './components/Profile.jsx';
+import AccountSettings from './components/AccountSettings.jsx';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -68,9 +70,14 @@ const Icon = ({ name, size = 18 }) => {
 function App() {
   const [authView, setAuthView] = useState(null);
   const [user, setUser] = useState(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [verificationOpen, setVerificationOpen] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountProfile, setAccountProfile] = useState(null);
 
   // Navigation state
-  const [activeTab, setActiveTab] = useState('Homepage');
+  const [activeTab, setActiveTab] = useState('Home');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
@@ -80,6 +87,7 @@ function App() {
 
   async function signOut() {
     await supabase.auth.signOut();
+    setAccountMenuOpen(false);
   }
 
   const navItems = [
@@ -90,6 +98,28 @@ function App() {
     'Events',
     'Mentorship',
   ];
+  const accountFirstName = accountProfile?.first_name?.trim() || user?.user_metadata?.first_name?.trim() || user?.email?.split('@')[0] || 'Account';
+  const accountLastName = accountProfile?.last_name?.trim() || user?.user_metadata?.last_name?.trim() || '';
+  const accountInitials = `${accountFirstName[0] || ''}${accountLastName[0] || ''}`.toUpperCase();
+  const AccountAvatar = ({ menu = false }) => <span className={`account-avatar ${menu ? 'account-avatar-menu' : ''}`}>{accountProfile?.avatar_url ? <img src={accountProfile.avatar_url} alt="" /> : accountInitials}</span>;
+
+  useEffect(() => {
+    if (!user) {
+      setVerificationStatus(null);
+      return;
+    }
+    supabase.from('alumni_verifications').select('status').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => setVerificationStatus(data?.status || null));
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setAccountProfile(null);
+      return;
+    }
+    supabase.from('profiles').select('first_name, last_name, email, avatar_url').eq('id', user.id).maybeSingle()
+      .then(({ data }) => setAccountProfile(data || null));
+  }, [user]);
 
   const quickActions = [
     {
@@ -175,7 +205,7 @@ function App() {
           href="#top"
           onClick={(e) => {
             e.preventDefault();
-            setActiveTab('Homepage');
+            setActiveTab('Home');
           }}
           aria-label="Notre Dame of Dadiangas University Alumni home"
         >
@@ -195,7 +225,9 @@ function App() {
             <button
               key={item}
               className={activeTab === item ? 'active' : ''}
-              onClick={() => setActiveTab(item)}
+              onClick={() => {
+                setActiveTab(item);
+              }}
             >
               {item}
             </button>
@@ -203,14 +235,12 @@ function App() {
         </nav>
 
         <div className="header-actions">
-          {user ? <><button aria-label="Notifications" className="icon-button"><Icon name="bell" /></button><button aria-label="Settings" className="icon-button"><Icon name="settings" /></button><span className="signed-in-email">{user.email}</span><button className="header-auth-button" onClick={signOut}>Sign out</button></> : <><button className="header-auth-button" onClick={() => setAuthView('login')}>Log in</button><button className="header-auth-button header-auth-button-primary" onClick={() => setAuthView('register')}>Join now</button></>}
+          {user ? <><button aria-label="Notifications" className="icon-button"><Icon name="bell" /></button><button aria-label="Account settings" className="icon-button" onClick={() => setSettingsOpen(true)}><Icon name="settings" /></button><div className="account-menu-wrap"><button className="account-trigger" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><AccountAvatar /><span>{accountFirstName}</span><i>⌄</i></button>{accountMenuOpen && <div className="account-menu"><header className="account-menu-profile"><AccountAvatar menu /><span><small>My alumni account</small><strong>{accountFirstName}</strong><small>{user.email}</small></span></header><div className={`account-verification-status ${verificationStatus || 'not-started'}`}><span>{verificationStatus === 'verified' ? '✓' : verificationStatus === 'pending' ? '◌' : '!'}</span><p><strong>{verificationStatus === 'verified' ? 'Alumni verified' : verificationStatus === 'pending' ? 'Verification under review' : verificationStatus === 'needs_information' ? 'More information needed' : 'Alumni not verified'}</strong><small>{verificationStatus === 'verified' ? 'Your profile is confirmed.' : 'Complete verification to join the directory.'}</small></p></div><button className="account-menu-primary" onClick={() => { setAccountMenuOpen(false); setVerificationOpen(true); }}>{verificationStatus === 'verified' ? 'View verification' : 'Verify alumni status'} <span>→</span></button><div className="account-menu-options"><button onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}><span>⚙</span> Profile settings</button></div><button className="account-menu-signout" onClick={signOut}><span>↪</span> Sign out</button></div>}</div></> : <><button className="header-auth-button" onClick={() => setAuthView('login')}>Log in</button><button className="header-auth-button header-auth-button-primary" onClick={() => setAuthView('register')}>Join now</button></>}
         </div>
       </header>
 
       <main id="top">
-        {activeTab === 'Feed' ? (
-          <Feed />
-        ) : (
+        {activeTab === 'Feed' ? <Feed user={user} profile={accountProfile} /> : (
           <>
             <section className="hero-section">
               <div className="hero-background" aria-hidden="true">
@@ -239,6 +269,7 @@ function App() {
                   >
                   Create Your Alumni Profile
                   </button>
+                  {!user && <button className="hero-login-button" onClick={() => setAuthView('login')}>Log in</button>}
                 </div>
               </div>
             </section>
@@ -475,6 +506,8 @@ function App() {
           <a href="#support">Contact Support</a>
         </div>
       </footer>
+      {verificationOpen && user && <div className="verification-modal-backdrop" role="presentation" onMouseDown={() => setVerificationOpen(false)}><section className="verification-modal" role="dialog" aria-modal="true" aria-label="Alumni verification" onMouseDown={(event) => event.stopPropagation()}><button className="verification-modal-close" aria-label="Close verification" onClick={() => setVerificationOpen(false)}>×</button><Profile user={user} onStatusChange={(verification) => setVerificationStatus(verification?.status || null)} /></section></div>}
+      {settingsOpen && user && <AccountSettings user={user} profile={accountProfile} onClose={() => setSettingsOpen(false)} onProfileChange={setAccountProfile} />}
     </div>
   );
 }

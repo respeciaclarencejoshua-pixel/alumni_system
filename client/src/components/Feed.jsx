@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../lib/supabase.js';
 import './Feed.css';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
     heart: <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />,
     messageCircle: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
-    share: <circle cx="18" cy="5" r="3" />,
-    moreHorizontal: <><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></>,
     image: <rect x="3" y="3" width="18" height="18" rx="2" />,
     star: <polygon points="12 2 15.09 10.26 24 10.35 17.77 16.88 19.91 25.07 12 19.54 4.09 25.07 6.23 16.88 0 10.35 8.91 10.26 12 2" />,
     mapPin: <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />,
@@ -14,230 +13,66 @@ const Icon = ({ name, size = 18 }) => {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>;
 };
 
-export default function Feed() {
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      author: 'Sarah Jenkins',
-      role: 'Director of Engineering at TechFlow',
-      time: '4h ago',
-      avatar: 'https://i.pravatar.cc/80?img=45',
-      content: 'Thrilled to announce that our team just closed our Series B funding round! Big thanks to everyone who supported this journey from the beginning. #Growth #AlumniSuccess',
-      image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=600&q=60',
-      likes: 142,
-      comments: 28,
-      shares: 15,
-    },
-    {
-      id: 2,
-      author: 'Marcus Vonn',
-      role: 'Class of 2012',
-      time: '8h ago',
-      avatar: 'https://i.pravatar.cc/80?img=33',
-      content: 'Is anyone attending the Annual Alumni Mixer in Seattle next month? I\'d love to connect with fellow graduates in the Pacific Northwest region. Drop a comment if you\'re going!',
-      image: null,
-      likes: 54,
-      comments: 12,
-      shares: 8,
-    },
-  ]);
+function relativeTime(value) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / 1440)}d ago`;
+}
 
-  const [newPost, setNewPost] = useState('');
+export default function Feed({ user, profile }) {
+  const firstName = profile?.first_name?.trim() || user?.user_metadata?.first_name?.trim() || user?.email?.split('@')[0] || 'Alumni';
+  const lastName = profile?.last_name?.trim() || user?.user_metadata?.last_name?.trim() || '';
+  const displayName = [firstName, lastName].filter(Boolean).join(' ');
+  const email = profile?.email || user?.email || '';
+  const avatar = profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=003b16&color=ffffff&bold=true`;
+  const [posts, setPosts] = useState([]);
+  const [content, setContent] = useState('');
+  const [media, setMedia] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+  const mediaInput = useRef(null);
 
-  const handlePostSubmit = () => {
-    if (newPost.trim()) {
-      setPosts([
-        {
-          id: posts.length + 1,
-          author: 'You',
-          role: 'Your Title Here',
-          time: 'now',
-          avatar: 'https://i.pravatar.cc/80?img=12',
-          content: newPost,
-          image: null,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-        },
-        ...posts,
-      ]);
-      setNewPost('');
+  async function loadPosts() {
+    setLoading(true);
+    const { data, error } = await supabase.from('feed_posts').select('*').order('created_at', { ascending: false });
+    if (error) setMessage(error.message);
+    else setPosts(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { loadPosts(); }, []);
+
+  async function publish() {
+    if (!content.trim() && !media) return setMessage('Write an update or attach an image before posting.');
+    if (media && (!['image/jpeg', 'image/png', 'image/webp'].includes(media.type) || media.size > 10 * 1024 * 1024)) return setMessage('Use a JPG, PNG, or WebP image no larger than 10 MB.');
+    setSubmitting(true); setMessage('');
+    let mediaUrl = null;
+    let mediaPath = null;
+    if (media) {
+      mediaPath = `${user.id}/${crypto.randomUUID()}.${media.name.split('.').pop().toLowerCase()}`;
+      const { error: uploadError } = await supabase.storage.from('feed-media').upload(mediaPath, media, { contentType: media.type, upsert: false });
+      if (uploadError) { setMessage(uploadError.message); setSubmitting(false); return; }
+      mediaUrl = supabase.storage.from('feed-media').getPublicUrl(mediaPath).data.publicUrl;
     }
-  };
+    const { data, error } = await supabase.from('feed_posts').insert({ user_id: user.id, author_name: displayName, author_avatar_url: profile?.avatar_url || null, content: content.trim(), media_path: mediaPath }).select().single();
+    if (error) {
+      if (mediaPath) await supabase.storage.from('feed-media').remove([mediaPath]);
+      setMessage(error.message);
+    } else {
+      setPosts((current) => [{ ...data, media_url: mediaUrl }, ...current]);
+      setContent(''); setMedia(null);
+      if (mediaInput.current) mediaInput.current.value = '';
+    }
+    setSubmitting(false);
+  }
 
-  const trendingTopics = [
-    { id: 1, tag: '#PeakSummer2024', posts: '1.2K posts' },
-    { id: 2, tag: '#AnnualTechAlumniSummit', posts: '8.8K posts' },
-    { id: 3, tag: '#JobBoard2024', posts: '428 posts' },
-  ];
-
-  const suggestedAlumni = [
-    { id: 1, name: 'Liam Peterson', role: 'UX Designer', avatar: 'https://i.pravatar.cc/80?img=20' },
-    { id: 2, name: 'Maya Rodriguez', role: 'Data Scientist', avatar: 'https://i.pravatar.cc/80?img=48' },
-  ];
-
-  return (
-    <div className="feed-layout">
-      {/* Left Sidebar */}
-      <aside className="feed-sidebar-left">
-        <div className="profile-card">
-          <div className="profile-image">
-            <img src="https://i.pravatar.cc/120?img=12" alt="Profile" />
-          </div>
-          <h3>Alex Thorne</h3>
-          <p className="profile-subtitle">Class of 2018 • Product Designer</p>
-
-          <div className="profile-stats">
-            <div className="stat">
-              <strong>482</strong>
-              <span>CONNECTIONS</span>
-            </div>
-            <div className="stat">
-              <strong>124</strong>
-              <span>VISITS</span>
-            </div>
-          </div>
-
-          <nav className="feed-nav">
-            <button className="nav-item active">
-              <Icon name="image" size={20} />
-              <span>FEED</span>
-            </button>
-            <button className="nav-item">
-              <Icon name="star" size={20} />
-              <span>EVENTS</span>
-            </button>
-            <button className="nav-item">
-              <Icon name="messageCircle" size={20} />
-              <span>MENTORSHIP</span>
-            </button>
-            <button className="nav-item">
-              <Icon name="heart" size={20} />
-              <span>SAVED POSTS</span>
-            </button>
-          </nav>
-        </div>
-      </aside>
-
-      {/* Main Feed */}
-      <main className="feed-main">
-        {/* Post Creation */}
-        <div className="post-creator">
-          <img src="https://i.pravatar.cc/80?img=12" alt="Your avatar" className="avatar" />
-          <div className="creator-input">
-            <textarea
-              placeholder="Share an achievement or update with your network..."
-              value={newPost}
-              onChange={(e) => setNewPost(e.target.value)}
-            />
-            <div className="creator-actions">
-              <div className="creator-buttons">
-                <button className="creator-btn" title="Add media">
-                  <Icon name="image" size={20} />
-                  Media
-                </button>
-                <button className="creator-btn" title="Add achievement">
-                  <Icon name="star" size={20} />
-                  Achievement
-                </button>
-                <button className="creator-btn" title="Add event">
-                  <Icon name="mapPin" size={20} />
-                  Event
-                </button>
-              </div>
-              <button className="post-button" onClick={handlePostSubmit}>Post</button>
-            </div>
-          </div>
-        </div>
-
-        {/* Feed Posts */}
-        <div className="feed-posts">
-          {posts.map((post) => (
-            <article key={post.id} className="feed-post">
-              <div className="post-header">
-                <div className="post-author">
-                  <img src={post.avatar} alt={post.author} className="author-avatar" />
-                  <div>
-                    <h4>{post.author}</h4>
-                    <p>{post.role}</p>
-                  </div>
-                </div>
-                <button className="post-menu" aria-label="More options">
-                  <Icon name="moreHorizontal" size={20} />
-                </button>
-              </div>
-
-              <div className="post-time">{post.time}</div>
-
-              <p className="post-content">{post.content}</p>
-
-              {post.image && (
-                <div className="post-image">
-                  <img src={post.image} alt="Post content" />
-                </div>
-              )}
-
-              <div className="post-footer">
-                <div className="post-stats">
-                  <span>{post.likes} Likes</span>
-                  <span>{post.comments} Comments</span>
-                </div>
-
-                <div className="post-actions">
-                  <button className="post-action">
-                    <Icon name="heart" size={18} />
-                    Like
-                  </button>
-                  <button className="post-action">
-                    <Icon name="messageCircle" size={18} />
-                    Comment
-                  </button>
-                  <button className="post-action">
-                    <Icon name="share" size={18} />
-                    Share
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </main>
-
-      {/* Right Sidebar */}
-      <aside className="feed-sidebar-right">
-        {/* Trending Topics */}
-        <div className="sidebar-section">
-          <h3 className="sidebar-title">TRENDING TOPICS</h3>
-          <div className="trending-list">
-            {trendingTopics.map((topic) => (
-              <button key={topic.id} className="trending-item">
-                <div>
-                  <strong>{topic.tag}</strong>
-                  <p>{topic.posts}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Suggested Alumni */}
-        <div className="sidebar-section">
-          <h3 className="sidebar-title">SUGGESTED ALUMNI</h3>
-          <div className="alumni-list">
-            {suggestedAlumni.map((alumni) => (
-              <div key={alumni.id} className="alumni-item">
-                <img src={alumni.avatar} alt={alumni.name} />
-                <div>
-                  <p className="alumni-name">{alumni.name}</p>
-                  <p className="alumni-role">{alumni.role}</p>
-                </div>
-                <button className="connect-btn">Connect</button>
-              </div>
-            ))}
-          </div>
-          <button className="view-more">View All Recommendations</button>
-        </div>
-      </aside>
-    </div>
-  );
+  return <div className="feed-layout feed-layout-live">
+    <aside className="feed-sidebar-left"><div className="profile-card"><div className="profile-image"><img src={avatar} alt={`${displayName}'s profile`} /></div><h3>{displayName}</h3><p className="profile-email">{email}</p><nav className="feed-nav"><button className="nav-item active"><Icon name="image" size={20} /><span>Feed</span></button><button className="nav-item"><Icon name="star" size={20} /><span>Events</span></button><button className="nav-item"><Icon name="messageCircle" size={20} /><span>Mentorship</span></button><button className="nav-item"><Icon name="heart" size={20} /><span>Saved posts</span></button></nav></div></aside>
+    <main className="feed-main"><section className="post-creator"><img src={avatar} alt="" className="avatar" /><div className="creator-input"><textarea placeholder="Share an achievement or update with your network..." value={content} onChange={(event) => setContent(event.target.value)} maxLength="2000" /><input ref={mediaInput} className="feed-media-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setMedia(event.target.files?.[0] || null)} /><div className="creator-actions"><div className="creator-buttons"><button type="button" className="creator-btn" onClick={() => mediaInput.current?.click()}><Icon name="image" size={20} />{media ? media.name : 'Media'}</button></div><button className="post-button" type="button" disabled={submitting} onClick={publish}>{submitting ? 'Posting…' : 'Post'}</button></div>{message && <p className="feed-message">{message}</p>}</div></section>
+      <section className="feed-posts">{loading ? <p className="feed-empty">Loading posts…</p> : posts.length === 0 ? <p className="feed-empty">No posts yet. Share the first update with your alumni community.</p> : posts.map((post) => <article key={post.id} className="feed-post"><div className="post-header"><div className="post-author"><img src={post.author_avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author_name)}&background=003b16&color=ffffff&bold=true`} alt="" className="author-avatar" /><div><h4>{post.author_name}</h4><p>{post.user_id === user?.id ? email : 'NDDU Alumni'}</p></div></div></div><div className="post-time">{relativeTime(post.created_at)}</div>{post.content && <p className="post-content">{post.content}</p>}{post.media_path && <div className="post-image"><img src={post.media_url || supabase.storage.from('feed-media').getPublicUrl(post.media_path).data.publicUrl} alt="Post attachment" /></div>}</article>)}</section>
+    </main>
+  </div>;
 }

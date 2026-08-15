@@ -99,6 +99,48 @@ adminRouter.patch('/members/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+adminRouter.get('/verifications', async (req, res, next) => {
+  const status = String(req.query.status || 'pending').toLowerCase();
+  if (!['pending', 'needs_information', 'verified', 'rejected', 'all'].includes(status)) return res.status(400).json({ error: 'A valid verification status is required.' });
+  try {
+    let query = adminClient.from('alumni_verifications')
+      .select('id, user_id, graduation_name, graduation_year, program, document_path, document_filename, status, reviewer_note, created_at, profiles!alumni_verifications_user_id_fkey(first_name, last_name, email)')
+      .order('created_at', { ascending: false });
+    if (status !== 'all') query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json({ verifications: data });
+  } catch (error) { next(error); }
+});
+
+adminRouter.patch('/verifications/:id', async (req, res, next) => {
+  const status = String(req.body.status || '').toLowerCase();
+  const reviewerNote = typeof req.body.reviewerNote === 'string' ? req.body.reviewerNote.trim() || null : null;
+  if (!['needs_information', 'verified', 'rejected'].includes(status)) return res.status(400).json({ error: 'Choose a valid verification decision.' });
+  try {
+    const { data: verification, error: verificationError } = await adminClient.from('alumni_verifications').update({
+      status, reviewer_note: reviewerNote, reviewed_by: req.admin.id, reviewed_at: new Date().toISOString(),
+    }).eq('id', req.params.id).select('id, user_id, status').single();
+    if (verificationError) throw verificationError;
+    if (status === 'verified') {
+      const { error: profileError } = await adminClient.from('profiles').update({ status: 'verified' }).eq('id', verification.user_id);
+      if (profileError) throw profileError;
+    }
+    await writeAuditLog({ actorId: req.admin.id, action: `alumni_verification.${status}`, targetType: 'alumni_verification', targetId: verification.id, details: { reviewerNote } });
+    res.json({ verification });
+  } catch (error) { next(error); }
+});
+
+adminRouter.get('/verifications/:id/document', async (req, res, next) => {
+  try {
+    const { data: verification, error } = await adminClient.from('alumni_verifications').select('document_path').eq('id', req.params.id).single();
+    if (error) throw error;
+    const { data, error: signedUrlError } = await adminClient.storage.from('verification-documents').createSignedUrl(verification.document_path, 60);
+    if (signedUrlError) throw signedUrlError;
+    res.json({ url: data.signedUrl });
+  } catch (error) { next(error); }
+});
+
 adminRouter.get('/settings', async (req, res, next) => {
   try {
     const { data, error } = await adminClient.from('system_settings').select('*').eq('id', 1).single();

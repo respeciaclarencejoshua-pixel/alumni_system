@@ -1,0 +1,108 @@
+.profile-page {
+  width: min(100%, 980px);
+  margin: 48px auto;
+  color: var(--color-text);
+}
+
+.profile-heading h1,
+.verification-status h2,
+.verification-form h2 {
+  margin: 0;
+  color: var(--color-primary);
+  font-family: var(--font-display);
+}
+
+.profile-heading > p:last-child,
+.verification-status p,
+.verification-form > div > p {
+  color: var(--color-text-muted);
+}
+
+.verification-status,
+.verification-form {
+  margin-top: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-white);
+  box-shadow: var(--shadow-card);
+}
+
+.verification-status {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 34px;
+}
+
+.verification-status h2,
+.verification-form h2 { font-size: 1.6rem; }
+.verification-status p { margin: 8px 0 0; }
+
+.verification-badge {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #fff8e7;
+  color: #895900;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.verification-status.verified { border-color: #b9e1c2; }
+.verification-status.verified .verification-badge { background: #edf9ef; color: #137333; }
+.verification-status.needs_information,
+.verification-status.rejected { border-color: #f6c3be; }
+.verification-status.needs_information .verification-badge,
+.verification-status.rejected .verification-badge { background: #fff2f0; color: #b42318; }
+
+.reviewer-feedback {
+  margin-top: 14px !important;
+  padding: 11px 13px;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-light);
+}
+
+.verification-form {
+  display: grid;
+  gap: 22px;
+  padding: 36px;
+}
+
+.verification-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-text);
+  font-size: .85rem;
+  font-weight: 700;
+}
+
+.verification-form label small {
+  color: var(--color-text-muted);
+  font-size: .73rem;
+  font-weight: 400;
+}
+
+.verification-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.verification-form input[type='file'] { padding: 8px; font-size: .78rem; }
+.verification-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.verification-message { margin: 0; padding: 11px 13px; border-radius: 5px; background: var(--color-surface-light); color: var(--color-text); font-size: .82rem; }
+.verification-form .dark-button { justify-self: start; }
+
+@media (max-width: 640px) {
+  .profile-page { margin: 24px auto; }
+  .verification-status { display: grid; padding: 22px; }
+  .verification-fields { grid-template-columns: 1fr; }
+  .verification-form { padding: 22px; }
+}

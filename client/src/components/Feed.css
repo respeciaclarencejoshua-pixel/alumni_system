@@ -56,6 +56,14 @@
   margin-bottom: 20px;
 }
 
+.feed-layout-live {
+  grid-template-columns: 280px minmax(0, 760px);
+  justify-content: center;
+}
+
+.profile-card .profile-subtitle { display: none; }
+.profile-email { margin: 0; color: #56826a; font-size: .78rem; overflow-wrap: anywhere; }
+
 .profile-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -233,6 +241,11 @@
 .post-button:hover {
   background: var(--color-primary-dark);
 }
+
+.post-button:disabled { cursor: wait; opacity: .65; }
+.feed-media-input { display: none; }
+.feed-message { margin: 0; padding: 9px 11px; border-radius: 4px; background: #fff2f0; color: #b42318; font-size: .78rem; }
+.feed-empty { margin: 0; padding: 32px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-light); color: var(--color-text-muted); text-align: center; }
 
 /* Feed Posts */
 

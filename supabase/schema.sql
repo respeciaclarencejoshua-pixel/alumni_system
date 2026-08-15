@@ -16,6 +16,29 @@ drop policy if exists "Users can view their own profile" on public.profiles;
 create policy "Users can view their own profile" on public.profiles for select using (auth.uid() = id);
 drop policy if exists "Users can create their own profile" on public.profiles;
 create policy "Users can create their own profile" on public.profiles for insert with check (auth.uid() = id);
+alter table public.profiles add column if not exists avatar_url text;
+
+-- Profile edits are deliberately limited to name and avatar. Roles and account
+-- status remain server-managed.
+create or replace function public.update_own_profile(p_first_name text, p_last_name text, p_avatar_url text)
+returns public.profiles
+language plpgsql
+security definer set search_path = public
+as $$
+declare updated_profile public.profiles;
+begin
+  update public.profiles
+  set first_name = nullif(trim(p_first_name), ''),
+      last_name = nullif(trim(p_last_name), ''),
+      avatar_url = nullif(trim(p_avatar_url), '')
+  where id = auth.uid()
+  returning * into updated_profile;
+  if updated_profile is null then raise exception 'Profile not found'; end if;
+  return updated_profile;
+end;
+$$;
+revoke all on function public.update_own_profile(text, text, text) from public;
+grant execute on function public.update_own_profile(text, text, text) to authenticated;
 
 -- Always create a profile when an Auth user is created. This runs with the
 -- database owner's privileges, so it also works when email confirmation means
@@ -45,6 +68,90 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- A user submits graduation evidence from their profile. Government IDs are
+-- intentionally not collected for alumni verification.
+create table if not exists public.alumni_verifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  graduation_name text not null,
+  graduation_year smallint not null check (graduation_year between 1900 and 2100),
+  graduation_date date,
+  batch_name text,
+  program text not null,
+  document_path text not null,
+  document_filename text not null,
+  status text not null default 'pending' check (status in ('pending', 'needs_information', 'verified', 'rejected')),
+  reviewer_note text,
+  reviewed_by uuid references public.profiles(id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists alumni_verifications_user_created_at_idx on public.alumni_verifications (user_id, created_at desc);
+create index if not exists alumni_verifications_status_created_at_idx on public.alumni_verifications (status, created_at);
+
+-- Allows existing installations to adopt the graduation-date and batch-name fields.
+alter table public.alumni_verifications add column if not exists graduation_date date;
+alter table public.alumni_verifications add column if not exists batch_name text;
+
+alter table public.alumni_verifications enable row level security;
+drop policy if exists "Users can view their own verification submissions" on public.alumni_verifications;
+create policy "Users can view their own verification submissions" on public.alumni_verifications
+  for select using (auth.uid() = user_id);
+drop policy if exists "Users can submit their own verification" on public.alumni_verifications;
+create policy "Users can submit their own verification" on public.alumni_verifications
+  for insert with check (auth.uid() = user_id and status = 'pending');
+
+-- Private evidence storage. Users can only upload/read files in their own
+-- folder; the server-side admin client can review them without exposing URLs.
+insert into storage.buckets (id, name, public)
+values ('verification-documents', 'verification-documents', false)
+on conflict (id) do update set public = false;
+drop policy if exists "Users can upload their own verification evidence" on storage.objects;
+create policy "Users can upload their own verification evidence" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'verification-documents' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "Users can view their own verification evidence" on storage.objects;
+create policy "Users can view their own verification evidence" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'verification-documents' and (storage.foldername(name))[1] = auth.uid()::text);
+
+insert into storage.buckets (id, name, public)
+values ('profile-avatars', 'profile-avatars', true)
+on conflict (id) do update set public = true;
+drop policy if exists "Users can upload their own profile avatar" on storage.objects;
+create policy "Users can upload their own profile avatar" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'profile-avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Community feed. Posts are intentionally empty on installation: all content
+-- comes from signed-in alumni, rather than seeded/demo data.
+create table if not exists public.feed_posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  author_name text not null,
+  author_avatar_url text,
+  content text not null default '' check (char_length(content) <= 2000),
+  media_path text,
+  created_at timestamptz not null default now(),
+  check (char_length(trim(content)) > 0 or media_path is not null)
+);
+create index if not exists feed_posts_created_at_idx on public.feed_posts (created_at desc);
+alter table public.feed_posts enable row level security;
+drop policy if exists "Authenticated users can view feed posts" on public.feed_posts;
+create policy "Authenticated users can view feed posts" on public.feed_posts
+  for select to authenticated using (true);
+drop policy if exists "Users can publish their own feed posts" on public.feed_posts;
+create policy "Users can publish their own feed posts" on public.feed_posts
+  for insert to authenticated with check (auth.uid() = user_id);
+
+insert into storage.buckets (id, name, public)
+values ('feed-media', 'feed-media', true)
+on conflict (id) do update set public = true;
+drop policy if exists "Users can upload their own feed media" on storage.objects;
+create policy "Users can upload their own feed media" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'feed-media' and (storage.foldername(name))[1] = auth.uid()::text);
 
 create table if not exists public.system_settings (
   id smallint primary key default 1 check (id = 1),
