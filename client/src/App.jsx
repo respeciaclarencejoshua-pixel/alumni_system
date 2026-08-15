@@ -70,7 +70,7 @@ function App() {
   const [user, setUser] = useState(null);
 
   // Navigation state
-  const [activeTab, setActiveTab] = useState('Directory');
+  const [activeTab, setActiveTab] = useState('Homepage');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
@@ -83,7 +83,7 @@ function App() {
   }
 
   const navItems = [
-    'Directory',
+    'Home',
     'Feed',
     'Jobs',
     'Opportunities',
@@ -159,8 +159,10 @@ function App() {
     },
   ];
 
-  if (authView === 'register') return <Register onLogin={() => setAuthView('login')} onClose={() => setAuthView(null)} />;
-  if (authView === 'login') return <Login onRegister={() => setAuthView('register')} onClose={() => setAuthView(null)} />;
+  // Show registration page
+  if (showRegister) {
+    return <Register />;
+  }
 
   return (
     <div className="app-shell">
@@ -168,6 +170,10 @@ function App() {
         <a
           className="brand"
           href="#top"
+          onClick={(e) => {
+            e.preventDefault();
+            setActiveTab('Homepage');
+          }}
           aria-label="Notre Dame of Dadiangas University Alumni home"
         >
           <img
@@ -228,11 +234,7 @@ function App() {
                     className="dark-button"
                     onClick={() => setAuthView('register')}
                   >
-                    Join the Alumni Network
-                  </button>
-
-                  <button className="text-button">
-                    Explore the Directory
+                  Create Your Alumni Profile
                   </button>
                 </div>
               </div>
@@ -445,7 +447,7 @@ function App() {
 
                 <button
                   className="dark-button"
-                  onClick={() => setAuthView('register')}
+                  onClick={() => setShowRegister(true)}
                 >
                   Create Your Alumni Profile
                 </button>
