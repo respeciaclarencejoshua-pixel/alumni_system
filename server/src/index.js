@@ -29,6 +29,62 @@ app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/status', (req, res) => res.json({ status: 'ok', message: 'Alumni system backend is running' }));
 
+app.get('/api/events', async (req, res, next) => {
+  const fallback = [
+    {
+      id: 'annual-alumni-homecoming-2024',
+      title: 'Annual Alumni Homecoming Weekend 2024',
+      category: 'Homecoming',
+      date: '2024-10-18T18:00:00',
+      location: 'Main Campus, Great Hall',
+      description: 'Join thousands of fellow alumni for a weekend of nostalgia, networking, and celebration.',
+      featured: true,
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'london-alumni-mixer',
+      title: 'London Alumni Mixer',
+      category: 'Networking',
+      date: '2024-11-16T18:00:00',
+      location: 'London, UK',
+      description: 'An evening of professional networking for alumni based in the UK.',
+      featured: false,
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'ai-in-modern-industry',
+      title: 'AI in Modern Industry',
+      category: 'Webinars',
+      date: '2024-11-18T15:00:00',
+      location: 'Online (Zoom)',
+      description: 'Expert alumni panel discussing the impact of generative AI across professional sectors.',
+      featured: false,
+      created_at: new Date().toISOString(),
+    },
+  ];
+
+  if (!adminClient) return res.json({ events: fallback });
+
+  try {
+    const { data, error } = await adminClient.from('admin_resources')
+      .select('*')
+      .eq('resource_type', 'events')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const events = (data || []).map((resource) => ({
+      id: resource.id,
+      ...resource.payload,
+      created_at: resource.created_at,
+    }));
+
+    return res.json({ events: events.length ? events : fallback });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 function requireAdminConfiguration(req, res, next) {
   if (!authClient || !adminClient) return res.status(503).json({ error: 'Admin API is not configured. Set the server Supabase environment variables.' });
   return next();
