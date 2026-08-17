@@ -96,7 +96,6 @@ function App() {
   const navItems = [
     'Home',
     'Feed',
-    'Jobs',
     'Opportunities',
     'Events',
     'Mentorship',
