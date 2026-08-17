@@ -21,6 +21,15 @@ function relativeTime(value) {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
+function withTimeout(operation, message = 'The request timed out. Check your Supabase connection and try again.') {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), 15000);
+  });
+
+  return Promise.race([operation, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
+
 export default function Feed({ user, profile }) {
   const firstName = profile?.first_name?.trim() || user?.user_metadata?.first_name?.trim() || user?.email?.split('@')[0] || 'Alumni';
   const lastName = profile?.last_name?.trim() || user?.user_metadata?.last_name?.trim() || '';
@@ -37,15 +46,23 @@ export default function Feed({ user, profile }) {
 
   async function loadPosts() {
     setLoading(true);
-    const { data, error } = await supabase.from('feed_posts').select('*').order('created_at', { ascending: false });
-    if (error) setMessage(error.message);
-    else setPosts(data || []);
-    setLoading(false);
+    try {
+      const { data, error } = await withTimeout(
+        supabase.from('feed_posts').select('*').order('created_at', { ascending: false })
+      );
+      if (error) setMessage(error.message);
+      else setPosts(data || []);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { loadPosts(); }, []);
 
   async function publish() {
+    if (!user?.id) return setMessage('Please sign in before publishing a post.');
     if (!content.trim() && !media) return setMessage('Write an update or attach an image before posting.');
     if (media && (!['image/jpeg', 'image/png', 'image/webp'].includes(media.type) || media.size > 10 * 1024 * 1024)) return setMessage('Use a JPG, PNG, or WebP image no larger than 10 MB.');
     setSubmitting(true); setMessage('');
@@ -57,16 +74,24 @@ export default function Feed({ user, profile }) {
       if (uploadError) { setMessage(uploadError.message); setSubmitting(false); return; }
       mediaUrl = supabase.storage.from('feed-media').getPublicUrl(mediaPath).data.publicUrl;
     }
-    const { data, error } = await supabase.from('feed_posts').insert({ user_id: user.id, author_name: displayName, author_avatar_url: profile?.avatar_url || null, content: content.trim(), media_path: mediaPath }).select().single();
-    if (error) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.from('feed_posts').insert({ user_id: user.id, author_name: displayName, author_avatar_url: profile?.avatar_url || null, content: content.trim(), media_path: mediaPath }).select().single()
+      );
+      if (error) {
+        if (mediaPath) await supabase.storage.from('feed-media').remove([mediaPath]);
+        setMessage(error.message);
+      } else {
+        setPosts((current) => [{ ...data, media_url: mediaUrl }, ...current]);
+        setContent(''); setMedia(null);
+        if (mediaInput.current) mediaInput.current.value = '';
+      }
+    } catch (error) {
       if (mediaPath) await supabase.storage.from('feed-media').remove([mediaPath]);
       setMessage(error.message);
-    } else {
-      setPosts((current) => [{ ...data, media_url: mediaUrl }, ...current]);
-      setContent(''); setMedia(null);
-      if (mediaInput.current) mediaInput.current.value = '';
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }
 
   return <div className="feed-layout feed-layout-live">

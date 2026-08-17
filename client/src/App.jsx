@@ -244,7 +244,7 @@ function App() {
 
       <main id="top">
         {activeTab === 'Feed' ? (
-          <Feed />
+          <Feed user={user} profile={accountProfile} />
         ) : activeTab === 'Events' ? (
           <Events />
         ) : activeTab === 'Opportunities' ? (
