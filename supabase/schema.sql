@@ -230,7 +230,57 @@ with check (auth.uid() = user_id);
 
 
 -- ============================================================
--- 5. SYSTEM SETTINGS
+-- 5. OPPORTUNITIES
+-- ============================================================
+
+create table if not exists public.opportunities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  author_name text not null,
+  category text not null check (category in ('jobs', 'internships', 'scholarships', 'freelance')),
+  title text not null check (char_length(trim(title)) between 2 and 180),
+  company_name text not null check (char_length(trim(company_name)) between 2 and 180),
+  location text not null,
+  description text not null check (char_length(trim(description)) between 10 and 4000),
+  requirements text not null default '' check (char_length(requirements) <= 4000),
+  tags text[] not null default '{}',
+  application_url text,
+  status text not null default 'active' check (status in ('active', 'archived')),
+  created_at timestamptz not null default now()
+);
+create index if not exists opportunities_active_created_at_idx on public.opportunities (status, created_at desc);
+alter table public.opportunities enable row level security;
+drop policy if exists "Authenticated users can view opportunities" on public.opportunities;
+drop policy if exists "Users can post opportunities" on public.opportunities;
+create policy "Authenticated users can view opportunities" on public.opportunities for select to authenticated using (true);
+create policy "Users can post opportunities" on public.opportunities for insert to authenticated with check (auth.uid() = user_id);
+
+create table if not exists public.opportunity_applications (
+  id uuid primary key default gen_random_uuid(),
+  opportunity_id uuid not null references public.opportunities(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  response text not null check (response in ('applied', 'interested')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (opportunity_id, user_id)
+);
+create index if not exists opportunity_applications_opportunity_idx on public.opportunity_applications (opportunity_id);
+alter table public.opportunity_applications enable row level security;
+drop policy if exists "Users can view own opportunity responses" on public.opportunity_applications;
+drop policy if exists "Users can add own opportunity responses" on public.opportunity_applications;
+drop policy if exists "Users can update own opportunity responses" on public.opportunity_applications;
+create policy "Users can view own opportunity responses" on public.opportunity_applications for select to authenticated using (auth.uid() = user_id);
+create policy "Users can add own opportunity responses" on public.opportunity_applications for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can update own opportunity responses" on public.opportunity_applications for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create or replace view public.opportunity_application_counts as
+select opportunity_id, count(*) filter (where response = 'applied')::integer as applicant_count,
+  count(*) filter (where response = 'interested')::integer as interested_count
+from public.opportunity_applications group by opportunity_id;
+grant select on public.opportunity_application_counts to authenticated;
+
+-- ============================================================
+-- 6. SYSTEM SETTINGS
 -- ============================================================
 
 create table if not exists public.system_settings (
@@ -288,6 +338,25 @@ create index if not exists admin_resources_type_created_at_idx
 on public.admin_resources (resource_type, created_at desc);
 
 alter table public.admin_resources enable row level security;
+
+-- Event responses are kept separately so attendee identities remain private
+-- from alumni while administrators can manage engagement.
+create table if not exists public.event_interests (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.admin_resources(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (event_id, user_id)
+);
+
+create index if not exists event_interests_event_id_idx on public.event_interests (event_id);
+alter table public.event_interests enable row level security;
+drop policy if exists "Users can view own event interests" on public.event_interests;
+drop policy if exists "Users can add own event interests" on public.event_interests;
+drop policy if exists "Users can remove own event interests" on public.event_interests;
+create policy "Users can view own event interests" on public.event_interests for select to authenticated using (auth.uid() = user_id);
+create policy "Users can add own event interests" on public.event_interests for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can remove own event interests" on public.event_interests for delete to authenticated using (auth.uid() = user_id);
 
 
 -- ============================================================

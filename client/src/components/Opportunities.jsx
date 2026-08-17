@@ -1,425 +1,50 @@
-import React, { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabase.js';
 import './Opportunities.css';
 
-const opportunities = [
-  {
-    id: 1,
-    type: 'JOB OPPORTUNITY',
-    category: 'jobs',
-    title: 'Junior Web Developer',
-    company: 'Tech Solutions Philippines',
-    location: 'General Santos City / Remote',
-    description:
-      'Looking for a motivated web developer to join our growing development team. Fresh graduates and experienced applicants are welcome.',
-    tags: ['React.js', 'JavaScript', 'PHP'],
-    posted: '2 hours ago',
-    age: 2,
-  },
-  {
-    id: 2,
-    type: 'INTERNSHIP',
-    category: 'internships',
-    title: 'Software Development Intern',
-    company: 'NDDU Alumni Tech Group',
-    location: 'General Santos City',
-    description:
-      'Gain real-world experience working with a team of developers on web-based applications and modern software projects.',
-    tags: ['Internship', 'Web Development', 'IT'],
-    posted: '5 hours ago',
-    age: 5,
-  },
-  {
-    id: 3,
-    type: 'SCHOLARSHIP',
-    category: 'scholarships',
-    title: 'Alumni Technology Scholarship',
-    company: 'NDDU Alumni Association',
-    location: 'Notre Dame of Dadiangas University',
-    description:
-      'Scholarship opportunity for qualified NDDU students pursuing technology-related programs.',
-    tags: ['Scholarship', 'Students', 'Technology'],
-    posted: 'Yesterday',
-    age: 24,
-  },
-  {
-    id: 4,
-    type: 'FREELANCE',
-    category: 'freelance',
-    title: 'Freelance UI/UX Designer',
-    company: 'Creative Digital PH',
-    location: 'Remote',
-    description:
-      'Seeking a creative UI/UX designer to help design modern interfaces for web and mobile applications.',
-    tags: ['UI/UX', 'Figma', 'Freelance'],
-    posted: 'Yesterday',
-    age: 24,
-  },
-];
+const categories = ['jobs', 'internships', 'scholarships', 'freelance'];
+const emptyForm = { category: 'jobs', title: '', company_name: '', location: '', description: '', requirements: '', tags: '', application_url: '' };
+const labelFor = (value) => value === 'jobs' ? 'Job opportunity' : value === 'freelance' ? 'Freelance' : value.slice(0, -1);
+const relativeTime = (date) => { const minutes = Math.max(0, Math.round((Date.now() - new Date(date).getTime()) / 60000)); return minutes < 1 ? 'Just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`; };
 
-function OpportunityIcon({ type }) {
-  if (type === 'SCHOLARSHIP') {
-    return (
-      <svg viewBox="0 0 24 24">
-        <path d="M3 10l9-5 9 5-9 5-9-5Z" />
-        <path d="M7 12v5c3 2 7 2 10 0v-5" />
-        <path d="M21 10v6" />
-      </svg>
-    );
+function Opportunities({ user, profile }) {
+  const [opportunities, setOpportunities] = useState([]), [applications, setApplications] = useState({});
+  const [activeCategory, setActiveCategory] = useState('all'), [search, setSearch] = useState(''), [sortOrder, setSortOrder] = useState('latest'), [saved, setSaved] = useState([]);
+  const [form, setForm] = useState(emptyForm), [posting, setPosting] = useState(false), [showForm, setShowForm] = useState(false), [selected, setSelected] = useState(null), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
+
+  async function loadOpportunities() {
+    setLoading(true);
+    const [{ data: posts, error: postsError }, { data: counts, error: countsError }] = await Promise.all([supabase.from('opportunities').select('*').eq('status', 'active').order('created_at', { ascending: false }), supabase.from('opportunity_application_counts').select('*')]);
+    if (postsError || countsError) setMessage(postsError?.message || countsError?.message || 'Could not load opportunities.');
+    else { const byId = Object.fromEntries((counts || []).map((item) => [item.opportunity_id, item])); setOpportunities((posts || []).map((post) => ({ ...post, counts: byId[post.id] || { applicant_count: 0, interested_count: 0 } }))); }
+    setLoading(false);
   }
-
-  if (type === 'INTERNSHIP') {
-    return (
-      <svg viewBox="0 0 24 24">
-        <rect x="3" y="7" width="18" height="13" rx="2" />
-        <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        <path d="M3 12h18" />
-      </svg>
-    );
+  useEffect(() => { loadOpportunities(); }, []);
+  const filtered = useMemo(() => opportunities.filter((item) => {
+    const text = [item.title, item.company_name, item.location, item.description, item.requirements, ...(item.tags || [])].join(' ').toLowerCase();
+    const categoryMatch = activeCategory === 'all' || (activeCategory === 'saved' ? saved.includes(item.id) : item.category === activeCategory);
+    return categoryMatch && (!search.trim() || text.includes(search.toLowerCase().trim()));
+  }).sort((a, b) => sortOrder === 'latest' ? new Date(b.created_at) - new Date(a.created_at) : new Date(a.created_at) - new Date(b.created_at)), [opportunities, activeCategory, saved, search, sortOrder]);
+  async function postOpportunity(event) {
+    event.preventDefault(); if (!user?.id) return setMessage('Please sign in before posting an opportunity.');
+    setPosting(true); setMessage(''); const name = [profile?.first_name || user.user_metadata?.first_name, profile?.last_name || user.user_metadata?.last_name].filter(Boolean).join(' ') || user.email.split('@')[0];
+    const { error } = await supabase.from('opportunities').insert({ user_id: user.id, author_name: name, category: form.category, title: form.title.trim(), company_name: form.company_name.trim(), location: form.location.trim(), description: form.description.trim(), requirements: form.requirements.trim(), application_url: form.application_url.trim() || null, tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean) });
+    setPosting(false); if (error) return setMessage(error.message); setForm(emptyForm); setShowForm(false); setMessage('Opportunity published successfully.'); loadOpportunities();
   }
-
-  if (type === 'FREELANCE') {
-    return (
-      <svg viewBox="0 0 24 24">
-        <path d="M4 17l7-7 4 4 5-5" />
-        <path d="M15 9h5v5" />
-      </svg>
-    );
+  async function respond(item, response) {
+    if (!user?.id) return setMessage('Please sign in before responding to an opportunity.');
+    const { error } = await supabase.from('opportunity_applications').upsert({ opportunity_id: item.id, user_id: user.id, response }, { onConflict: 'opportunity_id,user_id' });
+    if (error) return setMessage(error.message); setApplications((current) => ({ ...current, [item.id]: response })); setMessage(response === 'applied' ? 'Your application has been recorded.' : 'Your interest has been recorded.'); loadOpportunities();
   }
-
-  return (
-    <svg viewBox="0 0 24 24">
-      <rect x="3" y="7" width="18" height="13" rx="2" />
-      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <path d="M3 12h18" />
-      <path d="M10 12v2h4v-2" />
-    </svg>
-  );
+  const nav = [{ id: 'all', label: 'All Opportunities' }, ...categories.map((id) => ({ id, label: id[0].toUpperCase() + id.slice(1) })), { id: 'saved', label: 'Saved' }];
+  return <div className="opportunities-page">
+    <section className="opportunities-header"><div><p className="opportunities-eyebrow">NDDU ALUMNI NETWORK</p><h1>Opportunities</h1><p className="opportunities-subtitle">Discover career opportunities, internships, scholarships, and ways to grow together with the NDDU alumni community.</p></div><button className="post-opportunity-button" onClick={() => setShowForm(true)}>+ Post an Opportunity</button></section>
+    {message && <p className="opportunity-message">{message}</p>}
+    <div className="opportunities-layout"><aside className="opportunities-sidebar"><div className="opportunities-profile"><div className="opportunity-avatar">{(profile?.first_name || user?.email || 'A').slice(0, 2).toUpperCase()}</div><h3>{profile?.first_name || user?.user_metadata?.first_name || 'Alumni'}</h3><p>NDDU Alumni Network</p></div><nav className="opportunity-sidebar-nav">{nav.map((item) => <button key={item.id} className={activeCategory === item.id ? 'active' : ''} onClick={() => setActiveCategory(item.id)}>{item.label}{item.id === 'saved' && saved.length > 0 && <small className="saved-count">{saved.length}</small>}</button>)}</nav></aside>
+      <section className="opportunities-content"><div className="opportunity-search-card"><div className="search-box"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search opportunities..." />{search && <button className="clear-search" onClick={() => setSearch('')} aria-label="Clear search">×</button>}</div></div><div className="opportunity-results-header"><div><p className="small-label">EXPLORE</p><h2>{activeCategory === 'all' ? 'Latest opportunities' : activeCategory === 'saved' ? 'Saved opportunities' : nav.find((item) => item.id === activeCategory)?.label}</h2><span className="results-count">{filtered.length} opportunities</span></div><select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}><option value="latest">Latest</option><option value="oldest">Oldest</option></select></div>
+        <div className="opportunity-list">{loading ? <p className="feed-empty">Loading opportunities…</p> : filtered.length === 0 ? <div className="no-opportunities"><h3>No opportunities found</h3><p>Try another category, search term, or share the first opportunity.</p></div> : filtered.map((item) => <article className="opportunity-card" key={item.id}><div className="opportunity-card-top"><div className="opportunity-icon">▣</div><div className="opportunity-main"><div className="opportunity-meta"><span className="opportunity-type">{labelFor(item.category)}</span><span className="opportunity-posted">{relativeTime(item.created_at)}</span></div><h3>{item.title}</h3><p className="opportunity-company">{item.company_name}</p><p className="opportunity-location">⌖ {item.location}</p><p className="opportunity-description">{item.description}</p><div className="opportunity-tags">{(item.tags || []).map((tag) => <span key={tag}>{tag}</span>)}</div><p className="opportunity-counts">{item.counts.applicant_count} applied · {item.counts.interested_count} interested</p></div><button className={`save-opportunity ${saved.includes(item.id) ? 'saved' : ''}`} onClick={() => setSaved((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])}>{saved.includes(item.id) ? '♥' : '♡'}</button></div><div className="opportunity-card-footer"><span>Posted by {item.author_name}</span><button className="view-opportunity" onClick={() => setSelected(item)}>View opportunity →</button></div></article>)}</div></section></div>
+    {showForm && <div className="opportunity-modal" role="presentation" onMouseDown={() => setShowForm(false)}><form className="opportunity-dialog" onSubmit={postOpportunity} onMouseDown={(e) => e.stopPropagation()}><header><h2>Post an opportunity</h2><button type="button" onClick={() => setShowForm(false)}>×</button></header><div className="opportunity-form-grid"><label>Type<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((item) => <option key={item} value={item}>{labelFor(item)}</option>)}</select></label><label>Company / organization<input required value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} /></label><label>Opportunity title<input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label><label>Location<input required placeholder="e.g. General Santos City / Remote" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></label></div><label>Details<textarea required maxLength="4000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe the role or opportunity." /></label><label>Requirements<textarea required maxLength="4000" value={form.requirements} onChange={(e) => setForm({ ...form, requirements: e.target.value })} placeholder="Skills, qualifications, eligibility, or documents needed." /></label><label>Skills / tags <small>(separate with commas)</small><input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="React, JavaScript, Fresh graduates" /></label><label>External application link <small>(optional)</small><input type="url" value={form.application_url} onChange={(e) => setForm({ ...form, application_url: e.target.value })} placeholder="https://" /></label><footer><button type="button" onClick={() => setShowForm(false)}>Cancel</button><button className="post-opportunity-button" disabled={posting}>{posting ? 'Publishing…' : 'Publish opportunity'}</button></footer></form></div>}
+    {selected && <div className="opportunity-modal" role="presentation" onMouseDown={() => setSelected(null)}><section className="opportunity-dialog opportunity-details" role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(e) => e.stopPropagation()}><header className="opportunity-details-header"><div><span className="opportunity-type">{labelFor(selected.category)}</span><h2>{selected.title}</h2><p className="opportunity-company">{selected.company_name}</p></div><button aria-label="Close opportunity details" onClick={() => setSelected(null)}>×</button></header><div className="opportunity-detail-meta"><span>⌖ {selected.location || 'Location not specified'}</span><span>Posted by {selected.author_name}</span></div><div className="opportunity-detail-section"><h3>About this opportunity</h3><p className="detail-copy">{selected.description}</p></div><div className="opportunity-detail-section requirements-section"><h3>Requirements</h3><p className="detail-copy">{selected.requirements || 'No additional requirements provided.'}</p></div>{selected.tags?.length > 0 && <div className="opportunity-detail-section"><h3>Skills and tags</h3><div className="opportunity-tags">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></div>}<div className="opportunity-response-summary"><strong>Community response</strong><span>{selected.counts.applicant_count} applied</span><span>{selected.counts.interested_count} interested</span></div><footer><button className="interest-button" onClick={() => respond(selected, 'interested')}>{applications[selected.id] === 'interested' ? '✓ Interested' : 'I’m interested'}</button>{selected.application_url ? <a className="post-opportunity-button" href={selected.application_url} target="_blank" rel="noreferrer" onClick={() => respond(selected, 'applied')}>Apply now <span>→</span></a> : <button className="post-opportunity-button" onClick={() => respond(selected, 'applied')}>{applications[selected.id] === 'applied' ? '✓ Application recorded' : 'Apply now'} <span>→</span></button>}</footer></section></div>}
+  </div>;
 }
-
-function Opportunities() {
-  const [activeCategory, setActiveCategory] = useState('all');
-  const [search, setSearch] = useState('');
-  const [sortOrder, setSortOrder] = useState('latest');
-  const [savedOpportunities, setSavedOpportunities] = useState([]);
-
-  const toggleSave = (id) => {
-    setSavedOpportunities((current) => {
-      if (current.includes(id)) {
-        return current.filter((savedId) => savedId !== id);
-      }
-
-      return [...current, id];
-    });
-  };
-
-  const filteredOpportunities = useMemo(() => {
-    const searchTerm = search.toLowerCase().trim();
-
-    let results = opportunities.filter((opportunity) => {
-      const matchesCategory =
-        activeCategory === 'all'
-          ? true
-          : activeCategory === 'saved'
-            ? savedOpportunities.includes(opportunity.id)
-            : opportunity.category === activeCategory;
-
-      const searchableText = [
-        opportunity.title,
-        opportunity.company,
-        opportunity.location,
-        opportunity.description,
-        opportunity.type,
-        ...opportunity.tags,
-      ]
-        .join(' ')
-        .toLowerCase();
-
-      const matchesSearch =
-        searchTerm === '' || searchableText.includes(searchTerm);
-
-      return matchesCategory && matchesSearch;
-    });
-
-    results.sort((a, b) => {
-      if (sortOrder === 'latest') {
-        return a.age - b.age;
-      }
-
-      return b.age - a.age;
-    });
-
-    return results;
-  }, [activeCategory, search, sortOrder, savedOpportunities]);
-
-  const categoryButtons = [
-    {
-      id: 'all',
-      label: 'All Opportunities',
-      icon: '▣',
-    },
-    {
-      id: 'jobs',
-      label: 'Jobs',
-      icon: '💼',
-    },
-    {
-      id: 'internships',
-      label: 'Internships',
-      icon: '▤',
-    },
-    {
-      id: 'scholarships',
-      label: 'Scholarships',
-      icon: '🎓',
-    },
-    {
-      id: 'freelance',
-      label: 'Freelance',
-      icon: '↗',
-    },
-    {
-      id: 'saved',
-      label: 'Saved',
-      icon: '♡',
-    },
-  ];
-
-  return (
-    <div className="opportunities-page">
-      <section className="opportunities-header">
-        <div>
-          <p className="opportunities-eyebrow">
-            NDDU ALUMNI NETWORK
-          </p>
-
-          <h1>Opportunities</h1>
-
-          <p className="opportunities-subtitle">
-            Discover career opportunities, internships, scholarships,
-            and ways to grow together with the NDDU alumni community.
-          </p>
-        </div>
-
-        <button className="post-opportunity-button">
-          + Post an Opportunity
-        </button>
-      </section>
-
-      <div className="opportunities-layout">
-        <aside className="opportunities-sidebar">
-          <div className="opportunities-profile">
-            <div className="opportunity-avatar">
-              AL
-            </div>
-
-            <h3>Alumni</h3>
-            <p>NDDU Alumni Network</p>
-          </div>
-
-          <nav className="opportunity-sidebar-nav">
-            {categoryButtons.map((category) => (
-              <button
-                key={category.id}
-                className={
-                  activeCategory === category.id
-                    ? 'active'
-                    : ''
-                }
-                onClick={() => setActiveCategory(category.id)}
-              >
-                <span>{category.icon}</span>
-                {category.label}
-
-                {category.id === 'saved' &&
-                  savedOpportunities.length > 0 && (
-                    <small className="saved-count">
-                      {savedOpportunities.length}
-                    </small>
-                  )}
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        <section className="opportunities-content">
-          <div className="opportunity-search-card">
-            <div className="search-box">
-              <span>⌕</span>
-
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search opportunities..."
-              />
-
-              {search && (
-                <button
-                  className="clear-search"
-                  onClick={() => setSearch('')}
-                  aria-label="Clear search"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-
-            <button
-              className="filter-button"
-              onClick={() => setActiveCategory('all')}
-            >
-              ☰ Filter
-            </button>
-          </div>
-
-          <div className="opportunity-results-header">
-            <div>
-              <p className="small-label">
-                {activeCategory === 'all'
-                  ? 'EXPLORE'
-                  : activeCategory === 'saved'
-                    ? 'YOUR SAVED'
-                    : activeCategory.toUpperCase()}
-              </p>
-
-              <h2>
-                {activeCategory === 'all'
-                  ? 'Latest opportunities'
-                  : activeCategory === 'saved'
-                    ? 'Saved opportunities'
-                    : `${categoryButtons.find(
-                        (item) => item.id === activeCategory
-                      )?.label || 'Opportunities'}`}
-              </h2>
-
-              <span className="results-count">
-                {filteredOpportunities.length}{' '}
-                {filteredOpportunities.length === 1
-                  ? 'opportunity'
-                  : 'opportunities'}
-              </span>
-            </div>
-
-            <select
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value)}
-            >
-              <option value="latest">Latest</option>
-              <option value="oldest">Oldest</option>
-            </select>
-          </div>
-
-          <div className="opportunity-list">
-            {filteredOpportunities.length === 0 ? (
-              <div className="no-opportunities">
-                <div className="no-opportunities-icon">
-                  🔎
-                </div>
-
-                <h3>No opportunities found</h3>
-
-                <p>
-                  Try changing your search or selecting another
-                  opportunity category.
-                </p>
-
-                <button
-                  onClick={() => {
-                    setSearch('');
-                    setActiveCategory('all');
-                  }}
-                >
-                  Clear filters
-                </button>
-              </div>
-            ) : (
-              filteredOpportunities.map((opportunity) => {
-                const isSaved = savedOpportunities.includes(
-                  opportunity.id
-                );
-
-                return (
-                  <article
-                    className="opportunity-card"
-                    key={opportunity.id}
-                  >
-                    <div className="opportunity-card-top">
-                      <div className="opportunity-icon">
-                        <OpportunityIcon
-                          type={opportunity.type}
-                        />
-                      </div>
-
-                      <div className="opportunity-main">
-                        <div className="opportunity-meta">
-                          <span className="opportunity-type">
-                            {opportunity.type}
-                          </span>
-
-                          <span className="opportunity-posted">
-                            {opportunity.posted}
-                          </span>
-                        </div>
-
-                        <h3>{opportunity.title}</h3>
-
-                        <p className="opportunity-company">
-                          {opportunity.company}
-                        </p>
-
-                        <p className="opportunity-location">
-                          <span>⌖</span>
-                          {opportunity.location}
-                        </p>
-
-                        <p className="opportunity-description">
-                          {opportunity.description}
-                        </p>
-
-                        <div className="opportunity-tags">
-                          {opportunity.tags.map((tag) => (
-                            <span key={tag}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        className={`save-opportunity ${
-                          isSaved ? 'saved' : ''
-                        }`}
-                        aria-label={
-                          isSaved
-                            ? 'Remove from saved'
-                            : 'Save opportunity'
-                        }
-                        onClick={() =>
-                          toggleSave(opportunity.id)
-                        }
-                      >
-                        {isSaved ? '♥' : '♡'}
-                      </button>
-                    </div>
-
-                    <div className="opportunity-card-footer">
-                      <span>
-                        Shared with the NDDU Alumni community
-                      </span>
-
-                      <button className="view-opportunity">
-                        View opportunity →
-                      </button>
-                    </div>
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
 export default Opportunities;

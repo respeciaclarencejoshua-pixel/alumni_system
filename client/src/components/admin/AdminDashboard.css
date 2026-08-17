@@ -1744,3 +1744,41 @@
     grid-column: auto;
   }
 }
+
+.admin-resource-message { margin: 0 0 18px; padding: 11px 14px; border-radius: 5px; background: #e9f4ec; color: #075c2b; }
+.operations-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0 0 20px; }
+.admin-operations-page .jobs-events-overview { grid-template-columns: minmax(0, 1fr); }
+.admin-operations-page .create-event-card { display: none; }
+.admin-operations-page .events-attendance-panel > .panel-heading > .panel-link { display: none; }
+.operations-summary article { display: grid; gap: 3px; min-height: 104px; padding: 18px 20px; border: 1px solid #d4e2d8; border-radius: 8px; background: #fff; box-shadow: 0 3px 12px rgba(0, 59, 30, .04); }
+.operations-summary small, .admin-card-kicker, .job-approval-panel .panel-heading p, .events-attendance-panel .panel-heading p { margin: 0; color: #57806a; font-size: .69rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.operations-summary strong { color: #004a25; font-family: Georgia, 'Times New Roman', serif; font-size: 2rem; line-height: 1; }
+.operations-summary span { color: #6f887a; font-size: .78rem; }
+.opportunity-admin-row { align-items: center; }
+.opportunity-admin-row > div { min-width: 0; }
+.opportunity-admin-row em { display: block; margin-top: 4px; color: #5f7e6d; font-size: .72rem; font-style: normal; }
+.opportunity-admin-row aside { display: flex; gap: 7px; margin-left: auto; }
+.opportunity-admin-row aside button, .event-management-card footer button { border: 1px solid #bfd4c5; border-radius: 4px; padding: 7px 10px; background: #fff; color: #07552d; font: inherit; font-size: .73rem; font-weight: 700; cursor: pointer; }
+.opportunity-admin-row aside .archive-control { border-color: #ead4aa; color: #916600; }
+.admin-empty-state { display: grid; justify-items: start; gap: 7px; padding: 28px 10px; color: #638070; }
+.admin-empty-state b { color: #0c6134; font-size: 1.4rem; }
+.admin-empty-state strong { color: #164f31; }
+.admin-empty-state button { margin-top: 5px; border: 0; border-radius: 4px; padding: 9px 12px; background: #005128; color: #fff; font-weight: 700; cursor: pointer; }
+.admin-event-modal { position: fixed; z-index: 30; inset: 0; overflow: auto; padding: 48px 16px; background: rgba(0, 34, 16, .55); }
+.admin-event-modal form { width: min(560px, 100%); margin: 0 auto; padding: 24px; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(0,0,0,.25); }
+.admin-event-modal header, .admin-event-modal footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.admin-event-modal header h2 { margin: 0; }
+.admin-event-modal label { display: block; margin-top: 13px; font-size: 13px; font-weight: 700; }
+.admin-event-modal input, .admin-event-modal select, .admin-event-modal textarea { box-sizing: border-box; display: block; width: 100%; margin-top: 5px; padding: 9px; border: 1px solid #c9d8ce; border-radius: 4px; font: inherit; }
+.admin-event-modal textarea { min-height: 90px; resize: vertical; }
+.event-datetime-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.event-interest-dialog { width: min(560px, 100%); margin: 0 auto; padding: 24px; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(0,0,0,.25); }
+.event-interest-dialog header { display: flex; justify-content: space-between; gap: 12px; }
+.event-interest-dialog header h2 { margin: 4px 0 0; }
+.event-interest-dialog header button { border: 0; background: transparent; font-size: 24px; cursor: pointer; }
+.event-interest-dialog ul { display: grid; gap: 8px; padding: 0; list-style: none; }
+.event-interest-dialog li { display: grid; gap: 2px; padding: 11px; border: 1px solid #dbe8df; border-radius: 5px; }
+.event-interest-dialog li span { color: #688171; font-size: .82rem; }
+.admin-event-modal footer { margin-top: 20px; justify-content: flex-end; }
+.admin-event-modal button { padding: 9px 13px; border: 1px solid #b7cdbd; background: #fff; color: #064b26; font-weight: 700; cursor: pointer; }
+.admin-event-modal footer button:last-child { background: #005128; color: #fff; }

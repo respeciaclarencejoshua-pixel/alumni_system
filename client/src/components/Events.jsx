@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabase.js';
 import './Events.css';
 
 const fallbackEvents = [
@@ -95,11 +96,28 @@ function formatShortTime(dateString) {
   }).format(date);
 }
 
+function EventCountdown({ startDate, endDate }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
+  const start = new Date(startDate).getTime(), end = endDate ? new Date(endDate).getTime() : null;
+  const target = end && now >= start ? end : start;
+  const seconds = Math.max(0, Math.floor((target - now) / 1000));
+  const parts = [Math.floor(seconds / 86400), Math.floor((seconds % 86400) / 3600), Math.floor((seconds % 3600) / 60), seconds % 60];
+  return <div className="event-countdown"><p>{end && now >= start ? 'Event ends in' : 'Event starts in'}</p><div>{parts.map((part, index) => <span key={['Days', 'Hours', 'Minutes', 'Seconds'][index]}><strong>{String(part).padStart(2, '0')}</strong><small>{['Days', 'Hours', 'Minutes', 'Seconds'][index]}</small></span>)}</div></div>;
+}
+
 export default function EventsPage() {
   const [events, setEvents] = useState(fallbackEvents);
   const [selectedCategory, setSelectedCategory] = useState('All Events');
   const [selectedTimeframe, setSelectedTimeframe] = useState('Upcoming');
   const [locationFilter, setLocationFilter] = useState('');
+  const [dateSearch, setDateSearch] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('all');
+  const [selectedYear, setSelectedYear] = useState('all');
+  const [viewMode, setViewMode] = useState('list');
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [interestedIds, setInterestedIds] = useState([]);
+  const [eventMessage, setEventMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -150,11 +168,29 @@ export default function EventsPage() {
       return place.includes(locationFilter.toLowerCase());
     });
 
-    return byLocation;
-  }, [events, selectedCategory, selectedTimeframe, locationFilter]);
+    return byLocation.filter((event) => {
+      const date = new Date(event.date || event.startDate || event.created_at);
+      const matchesMonth = selectedMonth === 'all' || date.getMonth() === Number(selectedMonth);
+      const matchesYear = selectedYear === 'all' || date.getFullYear() === Number(selectedYear);
+      const searchable = `${event.title || ''} ${event.description || ''} ${event.location || ''}`.toLowerCase();
+      return matchesMonth && matchesYear && (!dateSearch.trim() || searchable.includes(dateSearch.toLowerCase().trim()));
+    });
+  }, [events, selectedCategory, selectedTimeframe, locationFilter, selectedMonth, selectedYear, dateSearch]);
+
+  const eventYears = [...new Set(events.map((event) => new Date(event.date || event.startDate || event.created_at).getFullYear()).filter(Number.isFinite))].sort((a, b) => a - b);
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   const featuredEvent = filteredEvents.find((event) => event.featured) || filteredEvents[0] || fallbackEvents[0];
   const otherEvents = filteredEvents.filter((event) => event.id !== (featuredEvent?.id ?? ''));
+  async function markInterested(event) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return setEventMessage('Please sign in before marking interest.');
+    const { error } = await supabase.from('event_interests').insert({ event_id: event.id, user_id: session.user.id });
+    if (error && error.code !== '23505') return setEventMessage(error.message);
+    setInterestedIds((current) => current.includes(event.id) ? current : [...current, event.id]);
+    setEvents((current) => current.map((item) => item.id === event.id && !interestedIds.includes(event.id) ? { ...item, interest_count: (item.interest_count || 0) + 1 } : item));
+    setEventMessage('Your interest has been recorded.');
+  }
 
   return (
     <div className="events-page-shell">
@@ -166,6 +202,12 @@ export default function EventsPage() {
             international homecoming celebrations.
           </p>
         </div>
+
+        <section className="events-date-toolbar" aria-label="Event date and search controls">
+          <div className="date-select-group"><span aria-hidden="true">▦</span><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}><option value="all">All months</option>{monthNames.map((month, index) => <option key={month} value={index}>{month}</option>)}</select><select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}><option value="all">All years</option>{eventYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></div>
+          <label className="event-search"><span aria-hidden="true">⌕</span><input value={dateSearch} onChange={(event) => setDateSearch(event.target.value)} placeholder="Search events" /></label>
+          <div className="event-view-switch" aria-label="View mode">{['yearly', 'monthly', 'weekly', 'daily', 'list'].map((mode) => <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)}>{mode}</button>)}</div>
+        </section>
 
         <div className="events-layout">
           <aside className="events-sidebar">
@@ -228,8 +270,8 @@ export default function EventsPage() {
                     <p className="event-place-line">{featuredEvent.location}</p>
                     <p className="event-description">{featuredEvent.description}</p>
                     <div className="cta-row">
-                      <button type="button" className="primary-action">Register Now</button>
-                      <button type="button" className="secondary-action">Details</button>
+                      <button type="button" className="primary-action" onClick={() => markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? '✓ Interested' : 'I’m interested'}</button>
+                      <button type="button" className="secondary-action" onClick={() => setSelectedEvent(featuredEvent)}>View details</button>
                     </div>
                   </div>
                 </article>
@@ -245,7 +287,7 @@ export default function EventsPage() {
                         <h3>{event.title}</h3>
                         <p className="mini-event-meta">{formatShortTime(event.date)}</p>
                         <p className="mini-event-description">{event.description}</p>
-                        <button type="button" className="register-button">Register</button>
+                        <button type="button" className="register-button" onClick={() => setSelectedEvent(event)}>View details</button>
                       </div>
                     </article>
                   ))}
@@ -267,7 +309,7 @@ export default function EventsPage() {
                       <h4>{event.title}</h4>
                       <p>{event.location}</p>
                     </div>
-                    <button type="button" className="session-arrow" aria-label={`View ${event.title}`}>
+                    <button type="button" className="session-arrow" aria-label={`View ${event.title}`} onClick={() => setSelectedEvent(event)}>
                       ›
                     </button>
                   </div>
@@ -282,6 +324,8 @@ export default function EventsPage() {
             </div>
           </main>
         </div>
+        {eventMessage && <p className="event-feedback">{eventMessage}</p>}
+        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image" style={selectedEvent.image_url ? { backgroundImage: `url(${selectedEvent.image_url})` } : undefined} /><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} alumni interested</div><button className="primary-action" onClick={() => markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? '✓ Interested' : 'I’m interested'}</button></div></section></div>}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import './AdminDashboard.css';
 import Members from './Members.jsx';
 import AlumniVerification from './AlumniVerification.jsx';
+import OpportunitiesEvents from './OpportunitiesEvents.jsx';
 
 const metrics = [
   ['Total alumni', '12,482', '↑ 4.2% this month', 'positive'], ['Verified alumni', '9,102', '73% of total', ''],
@@ -98,7 +99,7 @@ export default function AdminDashboard({ onSignOut }) {
   return <div className="admin-shell">
     <aside className="admin-sidebar">
       <div className="admin-sidebar-brand"><strong>Admin Portal</strong><small>System control center</small></div>
-      <nav className="admin-nav">{[['▦', 'Dashboard'], ['♙', 'Members'], ['✓', 'Alumni Verification'], ['▣', 'Jobs & Events'], ['▤', 'Social & News'], ['◔', 'Analytics'], ['⚙', 'Settings']].map(([icon, item]) => <button className={activePage === item ? 'selected' : ''} key={item} onClick={() => setActivePage(item)}><span>{icon}</span>{item}{item === 'Alumni Verification' && <b className="nav-count">14</b>}</button>)}</nav>
+      <nav className="admin-nav">{[['▦', 'Dashboard'], ['♙', 'Members'], ['✓', 'Alumni Verification'], ['▣', 'Opportunities & Events'], ['▤', 'Social & News'], ['◔', 'Analytics'], ['⚙', 'Settings']].map(([icon, item]) => <button className={activePage === item ? 'selected' : ''} key={item} onClick={() => setActivePage(item)}><span>{icon}</span>{item}{item === 'Alumni Verification' && <b className="nav-count">14</b>}</button>)}</nav>
       <div className="admin-user"><b>AU</b><span><strong>Admin User</strong><small>Super administrator</small></span></div><button className="admin-report" onClick={onSignOut}>Sign out</button>
     </aside>
     <section className="admin-content">
@@ -112,7 +113,7 @@ export default function AdminDashboard({ onSignOut }) {
       </>}
       {activePage === 'Members' && <Members />}
       {activePage === 'Alumni Verification' && <AlumniVerification />}
-      {activePage === 'Jobs & Events' && <JobsAndEvents />}
+      {activePage === 'Opportunities & Events' && <OpportunitiesEvents />}
       {activePage === 'Social & News' && <SocialAndNews />}
       {activePage === 'Analytics' && <Analytics />}
       {activePage === 'Settings' && <Settings />}

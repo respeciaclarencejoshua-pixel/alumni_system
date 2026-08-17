@@ -417,11 +417,11 @@ function App() {
 
       <main id="top">
         {activeTab === 'Feed' ? (
-          <Feed />
+          <Feed user={user} profile={accountProfile} />
         ) : activeTab === 'Events' ? (
           <Events />
         ) : activeTab === 'Opportunities' ? (
-          <Opportunities />
+          <Opportunities user={user} profile={accountProfile} />
         ) : (
           <>
             <section className="hero-section">

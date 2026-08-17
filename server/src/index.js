@@ -127,9 +127,19 @@ app.get('/api/events', async (req, res, next) => {
       throw error;
     }
 
+    const resourceIds = (data || []).map((resource) => resource.id);
+    const { data: interests, error: interestsError } = resourceIds.length
+      ? await adminClient.from('event_interests').select('event_id').in('event_id', resourceIds)
+      : { data: [], error: null };
+    if (interestsError) throw interestsError;
+    const interestCounts = (interests || []).reduce((counts, interest) => {
+      counts[interest.event_id] = (counts[interest.event_id] || 0) + 1;
+      return counts;
+    }, {});
     const events = (data || []).map((resource) => ({
       id: resource.id,
       ...resource.payload,
+      interest_count: interestCounts[resource.id] || 0,
       created_at: resource.created_at,
     }));
 
@@ -886,6 +896,57 @@ adminRouter.put(
 /* =========================================================
    ADMIN RESOURCES
 ========================================================= */
+
+adminRouter.get('/opportunities', async (req, res, next) => {
+  try {
+    const { data, error } = await adminClient
+      .from('opportunities')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ opportunities: data || [] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch('/opportunities/:id', async (req, res, next) => {
+  const body = req.body || {};
+  const editableFields = ['title', 'company_name', 'location', 'category', 'description', 'requirements'];
+  const updates = Object.fromEntries(editableFields.filter((field) => typeof body[field] === 'string').map((field) => [field, body[field].trim()]));
+  if (body.status !== undefined) {
+    if (!['active', 'archived'].includes(body.status)) return res.status(400).json({ error: 'Status must be active or archived.' });
+    updates.status = body.status;
+  }
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide at least one valid opportunity field.' });
+  try {
+    const { data, error } = await adminClient
+      .from('opportunities')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select('id, title, status')
+      .single();
+    if (error) throw error;
+    await writeAuditLog({ actorId: req.admin.id, action: updates.status ? `opportunity.${updates.status}` : 'opportunity.updated', targetType: 'opportunity', targetId: data.id, details: { title: data.title, fields: Object.keys(updates) } });
+    res.json({ opportunity: data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get('/events/:id/interests', async (req, res, next) => {
+  try {
+    const { data, error } = await adminClient
+      .from('event_interests')
+      .select('user_id, created_at, profiles!event_interests_user_id_fkey(first_name, last_name, email)')
+      .eq('event_id', req.params.id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ interests: (data || []).map((item) => ({ user_id: item.user_id, created_at: item.created_at, name: [item.profiles?.first_name, item.profiles?.last_name].filter(Boolean).join(' ') || 'Alumni', email: item.profiles?.email || '' })) });
+  } catch (error) {
+    next(error);
+  }
+});
 
 const resourceTypes = new Set([
   'jobs',
