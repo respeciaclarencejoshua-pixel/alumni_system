@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { adminApi } from '../lib/adminApi.js';
+import { adminApi } from '../../lib/adminApi.js';
 import './Members.css';
 
 export default function Members() {
