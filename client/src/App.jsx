@@ -1,13 +1,14 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
+import AboutNDDU from './components/AboutNDDU.jsx';
 import Opportunities from './components/Opportunities';
 import Events from './components/Events.jsx';
 import Register from './Register.jsx';
 import Login from './Login.jsx';
 import Profile from './components/Profile.jsx';
 import AccountSettings from './components/AccountSettings.jsx';
-
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -79,12 +80,21 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountProfile, setAccountProfile] = useState(null);
 
-  // Navigation state
   const [activeTab, setActiveTab] = useState('Home');
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null);
+      });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -95,23 +105,57 @@ function App() {
 
   const navItems = [
     'Home',
+    'About NDDU',
     'Feed',
     'Opportunities',
     'Events',
     'Mentorship',
   ];
-  const accountFirstName = accountProfile?.first_name?.trim() || user?.user_metadata?.first_name?.trim() || user?.email?.split('@')[0] || 'Account';
-  const accountLastName = accountProfile?.last_name?.trim() || user?.user_metadata?.last_name?.trim() || '';
-  const accountInitials = `${accountFirstName[0] || ''}${accountLastName[0] || ''}`.toUpperCase();
-  const AccountAvatar = ({ menu = false }) => <span className={`account-avatar ${menu ? 'account-avatar-menu' : ''}`}>{accountProfile?.avatar_url ? <img src={accountProfile.avatar_url} alt="" /> : accountInitials}</span>;
+
+  const accountFirstName =
+    accountProfile?.first_name?.trim() ||
+    user?.user_metadata?.first_name?.trim() ||
+    user?.email?.split('@')[0] ||
+    'Account';
+
+  const accountLastName =
+    accountProfile?.last_name?.trim() ||
+    user?.user_metadata?.last_name?.trim() ||
+    '';
+
+  const accountInitials =
+    `${accountFirstName[0] || ''}${accountLastName[0] || ''}`.toUpperCase();
+
+  const AccountAvatar = ({ menu = false }) => (
+    <span
+      className={`account-avatar ${
+        menu ? 'account-avatar-menu' : ''
+      }`}
+    >
+      {accountProfile?.avatar_url ? (
+        <img src={accountProfile.avatar_url} alt="" />
+      ) : (
+        accountInitials
+      )}
+    </span>
+  );
 
   useEffect(() => {
     if (!user) {
       setVerificationStatus(null);
       return;
     }
-    supabase.from('alumni_verifications').select('status').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
-      .then(({ data }) => setVerificationStatus(data?.status || null));
+
+    supabase
+      .from('alumni_verifications')
+      .select('status')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setVerificationStatus(data?.status || null);
+      });
   }, [user]);
 
   useEffect(() => {
@@ -119,8 +163,15 @@ function App() {
       setAccountProfile(null);
       return;
     }
-    supabase.from('profiles').select('first_name, last_name, email, avatar_url').eq('id', user.id).maybeSingle()
-      .then(({ data }) => setAccountProfile(data || null));
+
+    supabase
+      .from('profiles')
+      .select('first_name, last_name, email, avatar_url')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setAccountProfile(data || null);
+      });
   }, [user]);
 
   const quickActions = [
@@ -165,19 +216,6 @@ function App() {
     },
   ];
 
-  const jobs = [
-    {
-      icon: 'briefcase',
-      title: 'Senior Product Designer',
-      company: 'TechCorp • San Francisco, CA',
-    },
-    {
-      icon: 'chart',
-      title: 'Data Science Lead',
-      company: 'FinanceFlow • Remote',
-    },
-  ];
-
   const events = [
     {
       date: 'MAY 24',
@@ -192,11 +230,21 @@ function App() {
   ];
 
   if (authView === 'register') {
-    return <Register onLogin={() => setAuthView('login')} onClose={() => setAuthView(null)} />;
+    return (
+      <Register
+        onLogin={() => setAuthView('login')}
+        onClose={() => setAuthView(null)}
+      />
+    );
   }
 
   if (authView === 'login') {
-    return <Login onRegister={() => setAuthView('register')} onClose={() => setAuthView(null)} />;
+    return (
+      <Login
+        onRegister={() => setAuthView('register')}
+        onClose={() => setAuthView(null)}
+      />
+    );
   }
 
   return (
@@ -205,8 +253,8 @@ function App() {
         <a
           className="brand"
           href="#top"
-          onClick={(e) => {
-            e.preventDefault();
+          onClick={(event) => {
+            event.preventDefault();
             setActiveTab('Home');
           }}
           aria-label="Notre Dame of Dadiangas University Alumni home"
@@ -227,9 +275,7 @@ function App() {
             <button
               key={item}
               className={activeTab === item ? 'active' : ''}
-              onClick={() => {
-                setActiveTab(item);
-              }}
+              onClick={() => setActiveTab(item)}
             >
               {item}
             </button>
@@ -237,12 +283,142 @@ function App() {
         </nav>
 
         <div className="header-actions">
-          {user ? <><button aria-label="Notifications" className="icon-button"><Icon name="bell" /></button><button aria-label="Account settings" className="icon-button" onClick={() => setSettingsOpen(true)}><Icon name="settings" /></button><div className="account-menu-wrap"><button className="account-trigger" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><AccountAvatar /><span>{accountFirstName}</span><i>⌄</i></button>{accountMenuOpen && <div className="account-menu"><header className="account-menu-profile"><AccountAvatar menu /><span><small>My alumni account</small><strong>{accountFirstName}</strong><small>{user.email}</small></span></header><div className={`account-verification-status ${verificationStatus || 'not-started'}`}><span>{verificationStatus === 'verified' ? '✓' : verificationStatus === 'pending' ? '◌' : '!'}</span><p><strong>{verificationStatus === 'verified' ? 'Alumni verified' : verificationStatus === 'pending' ? 'Verification under review' : verificationStatus === 'needs_information' ? 'More information needed' : 'Alumni not verified'}</strong><small>{verificationStatus === 'verified' ? 'Your profile is confirmed.' : 'Complete verification to join the directory.'}</small></p></div><button className="account-menu-primary" onClick={() => { setAccountMenuOpen(false); setVerificationOpen(true); }}>{verificationStatus === 'verified' ? 'View verification' : 'Verify alumni status'} <span>→</span></button><div className="account-menu-options"><button onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}><span>⚙</span> Profile settings</button></div><button className="account-menu-signout" onClick={signOut}><span>↪</span> Sign out</button></div>}</div></> : <><button className="header-auth-button" onClick={() => setAuthView('login')}>Log in</button><button className="header-auth-button header-auth-button-primary" onClick={() => setAuthView('register')}>Join now</button></>}
+          {user ? (
+            <>
+              <button
+                aria-label="Notifications"
+                className="icon-button"
+              >
+                <Icon name="bell" />
+              </button>
+
+              <button
+                aria-label="Account settings"
+                className="icon-button"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <Icon name="settings" />
+              </button>
+
+              <div className="account-menu-wrap">
+                <button
+                  className="account-trigger"
+                  aria-expanded={accountMenuOpen}
+                  onClick={() =>
+                    setAccountMenuOpen((open) => !open)
+                  }
+                >
+                  <AccountAvatar />
+                  <span>{accountFirstName}</span>
+                  <i>⌄</i>
+                </button>
+
+                {accountMenuOpen && (
+                  <div className="account-menu">
+                    <header className="account-menu-profile">
+                      <AccountAvatar menu />
+
+                      <span>
+                        <small>My alumni account</small>
+                        <strong>{accountFirstName}</strong>
+                        <small>{user.email}</small>
+                      </span>
+                    </header>
+
+                    <div
+                      className={`account-verification-status ${
+                        verificationStatus || 'not-started'
+                      }`}
+                    >
+                      <span>
+                        {verificationStatus === 'verified'
+                          ? '✓'
+                          : verificationStatus === 'pending'
+                          ? '◌'
+                          : '!'}
+                      </span>
+
+                      <p>
+                        <strong>
+                          {verificationStatus === 'verified'
+                            ? 'Alumni verified'
+                            : verificationStatus === 'pending'
+                            ? 'Verification under review'
+                            : verificationStatus ===
+                              'needs_information'
+                            ? 'More information needed'
+                            : 'Alumni not verified'}
+                        </strong>
+
+                        <small>
+                          {verificationStatus === 'verified'
+                            ? 'Your profile is confirmed.'
+                            : 'Complete verification to join the directory.'}
+                        </small>
+                      </p>
+                    </div>
+
+                    <button
+                      className="account-menu-primary"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setVerificationOpen(true);
+                      }}
+                    >
+                      {verificationStatus === 'verified'
+                        ? 'View verification'
+                        : 'Verify alumni status'}
+
+                      <span>→</span>
+                    </button>
+
+                    <div className="account-menu-options">
+                      <button
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          setSettingsOpen(true);
+                        }}
+                      >
+                        <span>⚙</span>
+                        Profile settings
+                      </button>
+                    </div>
+
+                    <button
+                      className="account-menu-signout"
+                      onClick={signOut}
+                    >
+                      <span>↪</span>
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                className="header-auth-button"
+                onClick={() => setAuthView('login')}
+              >
+                Log in
+              </button>
+
+              <button
+                className="header-auth-button header-auth-button-primary"
+                onClick={() => setAuthView('register')}
+              >
+                Join now
+              </button>
+            </>
+          )}
         </div>
       </header>
 
       <main id="top">
-        {activeTab === 'Feed' ? (
+        {activeTab === 'About NDDU' ? (
+          <AboutNDDU />
+        ) : activeTab === 'Feed' ? (
           <Feed />
         ) : activeTab === 'Events' ? (
           <Events />
@@ -251,7 +427,10 @@ function App() {
         ) : (
           <>
             <section className="hero-section">
-              <div className="hero-background" aria-hidden="true">
+              <div
+                className="hero-background"
+                aria-hidden="true"
+              >
                 <img
                   src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1800&q=90"
                   alt=""
@@ -267,7 +446,8 @@ function App() {
 
                 <p>
                   Reconnect with classmates, discover opportunities,
-                  and continue making a difference in the NDDU community.
+                  and continue making a difference in the NDDU
+                  community.
                 </p>
 
                 <div className="hero-actions">
@@ -275,9 +455,17 @@ function App() {
                     className="dark-button"
                     onClick={() => setAuthView('register')}
                   >
-                  Create Your Alumni Profile
+                    Create Your Alumni Profile
                   </button>
-                  {!user && <button className="hero-login-button" onClick={() => setAuthView('login')}>Log in</button>}
+
+                  {!user && (
+                    <button
+                      className="hero-login-button"
+                      onClick={() => setAuthView('login')}
+                    >
+                      Log in
+                    </button>
+                  )}
                 </div>
               </div>
             </section>
@@ -292,8 +480,8 @@ function App() {
                   </h2>
 
                   <p>
-                    Simple tools to help you reconnect, grow your career,
-                    and support fellow alumni.
+                    Simple tools to help you reconnect, grow your
+                    career, and support fellow alumni.
                   </p>
                 </div>
 
@@ -304,7 +492,10 @@ function App() {
                       key={item.title}
                     >
                       <span className="quick-icon">
-                        <Icon name={item.icon} size={25} />
+                        <Icon
+                          name={item.icon}
+                          size={25}
+                        />
                       </span>
 
                       <h3>{item.title}</h3>
@@ -327,7 +518,8 @@ function App() {
                   </p>
 
                   <h2>
-                    Connected by faith, friendship, and shared purpose.
+                    Connected by faith, friendship, and shared
+                    purpose.
                   </h2>
                 </div>
 
@@ -357,6 +549,7 @@ function App() {
               <section className="panel feed-panel">
                 <div className="section-title">
                   <h2>From NDDU</h2>
+
                   <button className="text-button small">
                     View All
                   </button>
@@ -374,38 +567,9 @@ function App() {
                       </div>
 
                       <h3>{item.title}</h3>
+
                       <p>{item.text}</p>
                     </article>
-                  ))}
-                </div>
-              </section>
-
-              <section className="panel jobs-panel">
-                <div className="section-title">
-                  <h2>Featured careers</h2>
-
-                  <button className="text-button small">
-                    View All
-                  </button>
-                </div>
-
-                <div className="job-list">
-                  {jobs.map((job) => (
-                    <button
-                      className="job-card"
-                      key={job.title}
-                    >
-                      <span className="job-icon">
-                        <Icon name={job.icon} />
-                      </span>
-
-                      <span>
-                        <strong>{job.title}</strong>
-                        <small>{job.company}</small>
-                      </span>
-
-                      <Icon name="arrow" />
-                    </button>
                   ))}
                 </div>
               </section>
@@ -464,9 +628,9 @@ function App() {
                   </div>
 
                   <p className="quote-copy">
-                    “The mentorship program at AlumniConnect helped me
-                    navigate my early career challenges and eventually
-                    launch my own startup...”
+                    “The mentorship program at AlumniConnect
+                    helped me navigate my early career challenges
+                    and eventually launch my own startup...”
                   </p>
                 </article>
               </section>
@@ -482,14 +646,15 @@ function App() {
                   </h2>
 
                   <p>
-                    Update your details, discover what is new, and stay
-                    close to the people who shared your NDDU journey.
+                    Update your details, discover what is new,
+                    and stay close to the people who shared your
+                    NDDU journey.
                   </p>
                 </div>
 
                 <button
                   className="dark-button"
-                  onClick={() => setShowRegister(true)}
+                  onClick={() => setAuthView('register')}
                 >
                   Create Your Alumni Profile
                 </button>
@@ -514,10 +679,53 @@ function App() {
           <a href="#support">Contact Support</a>
         </div>
       </footer>
-      {verificationOpen && user && <div className="verification-modal-backdrop" role="presentation" onMouseDown={() => setVerificationOpen(false)}><section className="verification-modal" role="dialog" aria-modal="true" aria-label="Alumni verification" onMouseDown={(event) => event.stopPropagation()}><button className="verification-modal-close" aria-label="Close verification" onClick={() => setVerificationOpen(false)}>×</button><Profile user={user} onStatusChange={(verification) => setVerificationStatus(verification?.status || null)} /></section></div>}
-      {settingsOpen && user && <AccountSettings user={user} profile={accountProfile} onClose={() => setSettingsOpen(false)} onProfileChange={setAccountProfile} />}
+
+      {verificationOpen && user && (
+        <div
+          className="verification-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setVerificationOpen(false)}
+        >
+          <section
+            className="verification-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Alumni verification"
+            onMouseDown={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <button
+              className="verification-modal-close"
+              aria-label="Close verification"
+              onClick={() => setVerificationOpen(false)}
+            >
+              ×
+            </button>
+
+            <Profile
+              user={user}
+              onStatusChange={(verification) =>
+                setVerificationStatus(
+                  verification?.status || null
+                )
+              }
+            />
+          </section>
+        </div>
+      )}
+
+      {settingsOpen && user && (
+        <AccountSettings
+          user={user}
+          profile={accountProfile}
+          onClose={() => setSettingsOpen(false)}
+          onProfileChange={setAccountProfile}
+        />
+      )}
     </div>
   );
 }
 
 export default App;
+
