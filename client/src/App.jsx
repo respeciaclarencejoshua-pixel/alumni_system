@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
@@ -416,7 +415,9 @@ function App() {
       </header>
 
       <main id="top">
-        {activeTab === 'Feed' ? (
+        {activeTab === 'About NDDU' ? (
+          <AboutNDDU />
+        ) : activeTab === 'Feed' ? (
           <Feed user={user} profile={accountProfile} />
         ) : activeTab === 'Events' ? (
           <Events />
@@ -726,4 +727,3 @@ function App() {
 }
 
 export default App;
-

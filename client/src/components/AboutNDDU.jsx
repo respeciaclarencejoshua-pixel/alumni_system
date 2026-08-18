@@ -39,8 +39,8 @@ export default function AboutNDDU() {
 
           <p>
             As a Catholic <strong>Educational Institution</strong>, NDDU shares
-            in the Church’s mission of <strong>evangelization by integrating
-            life and faith</strong>;
+            in the Church’s mission of{' '}
+            <strong>evangelization by integrating life and faith</strong>;
           </p>
 
           <p>
@@ -88,9 +88,9 @@ export default function AboutNDDU() {
 
           <p>
             NDDU is committed to further national development. Students are
-            made aware of their rights and responsibilities as citizens and
-            are given opportunities to participate in institutional and
-            community development.
+            made aware of their rights and responsibilities as citizens and are
+            given opportunities to participate in institutional and community
+            development.
           </p>
 
           <p>
@@ -113,17 +113,17 @@ export default function AboutNDDU() {
             <article className="core-value">
               <h3>Family Spirit</h3>
               <p>
-                Champagnat’s great hope was that people in the Brother’s
-                schools would relate to one another as members of a loving
-                family, Mary being our Mother.
+                Champagnat’s great hope was that people in the Brother’s schools
+                would relate to one another as members of a loving family, Mary
+                being our Mother.
               </p>
             </article>
 
             <article className="core-value">
               <h3>Marian</h3>
               <p>
-                In a Marist school, our model in following Jesus is Mary,
-                whose virtues we try to live.
+                In a Marist school, our model in following Jesus is Mary, whose
+                virtues we try to live.
               </p>
             </article>
 
