@@ -11,6 +11,50 @@ export default function AboutNDDU() {
         <div className="about-nddu-divider"></div>
       </section>
 
+      <section className="about-nddu-video-section">
+        <div className="about-nddu-content">
+          <h2>GREEN NDDU</h2>
+          <div className="video-divider"></div>
+          <div className="videos-container">
+            <div className="video-card">
+              <iframe
+                width="100%"
+                height="300"
+                src="https://www.youtube.com/embed/PDXDOqCPYpI"
+                title="Video 1"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+
+            <div className="video-card">
+              <iframe
+                width="100%"
+                height="300"
+                src="https://www.youtube.com/embed/C-uTC1Hv3Ns"
+                title="Video 2"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+
+            <div className="video-card">
+              <iframe
+                width="100%"
+                height="300"
+                src="https://www.youtube.com/embed/mPldD45Lw0Y"
+                title="Video 3"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="about-nddu-section">
         <div className="about-nddu-content">
           <h2>Vision</h2>
