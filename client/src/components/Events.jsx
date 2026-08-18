@@ -2,67 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import './Events.css';
 
-const fallbackEvents = [
-  {
-    id: 'featured-event',
-    title: 'Annual Alumni Homecoming Weekend 2024',
-    category: 'Homecoming',
-    date: '2024-10-18T18:00:00',
-    endDate: '2024-10-20T00:00:00',
-    location: 'Main Campus, Great Hall',
-    time: 'October 18 - 20, 2024',
-    description:
-      'Join thousands of fellow alumni for a weekend of nostalgia, networking, and celebration. Featuring department tours, gala dinners, and the annual football game.',
-    featured: true,
-    imageLabel: 'Image placeholder',
-    link: '#',
-  },
-  {
-    id: 'london-alumni-mixer',
-    title: 'London Alumni Mixer',
-    category: 'Networking',
-    date: '2024-11-16T18:00:00',
-    location: 'London, UK',
-    time: 'Sept 24, 6:00 PM',
-    description: 'An evening of professional networking for alumni based in the UK. Light refreshments will be served.',
-    featured: false,
-    link: '#',
-  },
-  {
-    id: 'ai-modern-industry',
-    title: 'AI in Modern Industry',
-    category: 'Webinars',
-    date: '2024-11-18T15:00:00',
-    location: 'Online (Zoom)',
-    time: 'Online • Oct 5, 3:00 PM',
-    description: 'Expert alumni panel discussing the impact of generative AI across various professional sectors.',
-    featured: false,
-    link: '#',
-  },
-  {
-    id: 'clase-2024-reunion',
-    title: 'Class of 2014 Reunion',
-    category: 'Networking',
-    date: '2024-11-12T18:00:00',
-    location: 'San Francisco, CA',
-    time: 'Oct 14 • 10:00 AM',
-    description: 'Reconnect with your classmates and celebrate a decade of milestones and memories.',
-    featured: false,
-    link: '#',
-  },
-  {
-    id: 'entrepreneurship-workshop',
-    title: 'Entrepreneurship Workshop',
-    category: 'Webinars',
-    date: '2024-11-16T10:00:00',
-    location: 'NDDU Innovation Hub',
-    time: 'Nov 08 • 9:30 AM',
-    description: 'A practical workshop on launching, validating, and scaling an idea through alumni mentorship.',
-    featured: false,
-    link: '#',
-  },
-];
-
 function formatDateLabel(dateString) {
   if (!dateString) return 'TBA';
   const date = new Date(dateString);
@@ -107,7 +46,7 @@ function EventCountdown({ startDate, endDate }) {
 }
 
 export default function EventsPage() {
-  const [events, setEvents] = useState(fallbackEvents);
+  const [events, setEvents] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All Events');
   const [selectedTimeframe, setSelectedTimeframe] = useState('Upcoming');
   const [locationFilter, setLocationFilter] = useState('');
@@ -128,13 +67,14 @@ export default function EventsPage() {
         const response = await fetch('/api/events');
         if (!response.ok) throw new Error('Unable to load events');
         const payload = await response.json();
-        const loaded = Array.isArray(payload?.events) && payload.events.length > 0 ? payload.events : fallbackEvents;
+        const loaded = Array.isArray(payload?.events) ? payload.events : [];
         if (isMounted) {
           setEvents(loaded);
         }
       } catch (error) {
+        console.error('Error loading events:', error);
         if (isMounted) {
-          setEvents(fallbackEvents);
+          setEvents([]);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -180,7 +120,7 @@ export default function EventsPage() {
   const eventYears = [...new Set(events.map((event) => new Date(event.date || event.startDate || event.created_at).getFullYear()).filter(Number.isFinite))].sort((a, b) => a - b);
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-  const featuredEvent = filteredEvents.find((event) => event.featured) || filteredEvents[0] || fallbackEvents[0];
+  const featuredEvent = filteredEvents.find((event) => event.featured) || filteredEvents[0];
   const otherEvents = filteredEvents.filter((event) => event.id !== (featuredEvent?.id ?? ''));
   async function markInterested(event) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -190,6 +130,16 @@ export default function EventsPage() {
     setInterestedIds((current) => current.includes(event.id) ? current : [...current, event.id]);
     setEvents((current) => current.map((item) => item.id === event.id && !interestedIds.includes(event.id) ? { ...item, interest_count: (item.interest_count || 0) + 1 } : item));
     setEventMessage('Your interest has been recorded.');
+  }
+
+  async function removeInterest(event) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return setEventMessage('Please sign in to manage your interests.');
+    const { error } = await supabase.from('event_interests').delete().eq('event_id', event.id).eq('user_id', session.user.id);
+    if (error) return setEventMessage(error.message);
+    setInterestedIds((current) => current.filter((id) => id !== event.id));
+    setEvents((current) => current.map((item) => item.id === event.id && interestedIds.includes(event.id) ? { ...item, interest_count: Math.max(0, (item.interest_count || 0) - 1) } : item));
+    setEventMessage('Your interest has been removed.');
   }
 
   return (
@@ -259,8 +209,8 @@ export default function EventsPage() {
             ) : (
               <>
                 <article className="featured-event-card">
-                  <div className="featured-image">
-                    <span>Image placeholder</span>
+                  <div className="featured-image" style={featuredEvent.image_url ? { backgroundImage: `url(${featuredEvent.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+                    {!featuredEvent.image_url && <span>Image placeholder</span>}
                   </div>
 
                   <div className="featured-copy">
@@ -270,7 +220,7 @@ export default function EventsPage() {
                     <p className="event-place-line">{featuredEvent.location}</p>
                     <p className="event-description">{featuredEvent.description}</p>
                     <div className="cta-row">
-                      <button type="button" className="primary-action" onClick={() => markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? '✓ Interested' : 'I’m interested'}</button>
+                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? '✕ Remove interest' : 'I\'m interested'}</button>
                       <button type="button" className="secondary-action" onClick={() => setSelectedEvent(featuredEvent)}>View details</button>
                     </div>
                   </div>
@@ -279,8 +229,8 @@ export default function EventsPage() {
                 <div className="event-grid">
                   {otherEvents.slice(0, 2).map((event) => (
                     <article key={event.id} className="mini-event-card">
-                      <div className="mini-event-image">
-                        <span>Image</span>
+                      <div className="mini-event-image" style={event.image_url ? { backgroundImage: `url(${event.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+                        {!event.image_url && <span>Image</span>}
                       </div>
 
                       <div className="mini-event-body">
@@ -325,7 +275,7 @@ export default function EventsPage() {
           </main>
         </div>
         {eventMessage && <p className="event-feedback">{eventMessage}</p>}
-        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image" style={selectedEvent.image_url ? { backgroundImage: `url(${selectedEvent.image_url})` } : undefined} /><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} alumni interested</div><button className="primary-action" onClick={() => markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? '✓ Interested' : 'I’m interested'}</button></div></section></div>}
+        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image" style={selectedEvent.image_url ? { backgroundImage: `url(${selectedEvent.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} alumni interested</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? '✕ Remove interest' : 'I\'m interested'}</button></div></section></div>}
       </div>
     </div>
   );

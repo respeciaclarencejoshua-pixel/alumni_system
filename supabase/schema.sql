@@ -339,6 +339,34 @@ on public.admin_resources (resource_type, created_at desc);
 
 alter table public.admin_resources enable row level security;
 
+-- Allow authenticated users to read all events (publicly viewable resource)
+drop policy if exists "Anyone can view events" on public.admin_resources;
+
+create policy "Anyone can view events"
+on public.admin_resources
+for select
+to authenticated
+using (resource_type = 'events');
+
+-- Allow admins to create resources
+drop policy if exists "Admins can create resources" on public.admin_resources;
+
+create policy "Admins can create resources"
+on public.admin_resources
+for insert
+to authenticated
+with check (auth.uid() = created_by);
+
+-- Allow admins to update their own resources
+drop policy if exists "Admins can update resources" on public.admin_resources;
+
+create policy "Admins can update resources"
+on public.admin_resources
+for update
+to authenticated
+using (auth.uid() = created_by)
+with check (auth.uid() = created_by);
+
 -- Event responses are kept separately so attendee identities remain private
 -- from alumni while administrators can manage engagement.
 create table if not exists public.event_interests (

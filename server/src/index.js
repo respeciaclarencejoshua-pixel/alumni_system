@@ -40,14 +40,25 @@ const adminClient =
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Allow requests with no origin (mobile apps, Postman, curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Allow localhost in development
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
+      
+      // Check configured origins for production
+      if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
       return callback(new Error('Origin is not allowed by CORS'));
     },
 
-    methods: ['GET', 'POST', 'PATCH', 'PUT'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
     allowedHeaders: ['Authorization', 'Content-Type'],
   })
 );
@@ -70,47 +81,9 @@ app.get('/api/status', (req, res) =>
 ========================================================= */
 
 app.get('/api/events', async (req, res, next) => {
-  const fallback = [
-    {
-      id: 'annual-alumni-homecoming-2024',
-      title: 'Annual Alumni Homecoming Weekend 2024',
-      category: 'Homecoming',
-      date: '2024-10-18T18:00:00',
-      location: 'Main Campus, Great Hall',
-      description:
-        'Join thousands of fellow alumni for a weekend of nostalgia, networking, and celebration.',
-      featured: true,
-      created_at: new Date().toISOString(),
-    },
-
-    {
-      id: 'london-alumni-mixer',
-      title: 'London Alumni Mixer',
-      category: 'Networking',
-      date: '2024-11-16T18:00:00',
-      location: 'London, UK',
-      description:
-        'An evening of professional networking for alumni based in the UK.',
-      featured: false,
-      created_at: new Date().toISOString(),
-    },
-
-    {
-      id: 'ai-in-modern-industry',
-      title: 'AI in Modern Industry',
-      category: 'Webinars',
-      date: '2024-11-18T15:00:00',
-      location: 'Online (Zoom)',
-      description:
-        'Expert alumni panel discussing the impact of generative AI across professional sectors.',
-      featured: false,
-      created_at: new Date().toISOString(),
-    },
-  ];
-
   if (!adminClient) {
     return res.json({
-      events: fallback,
+      events: [],
     });
   }
 
@@ -127,15 +100,29 @@ app.get('/api/events', async (req, res, next) => {
       throw error;
     }
 
+    // Try to get interest counts, but don't fail if the table doesn't exist
+    let interestCounts = {};
     const resourceIds = (data || []).map((resource) => resource.id);
-    const { data: interests, error: interestsError } = resourceIds.length
-      ? await adminClient.from('event_interests').select('event_id').in('event_id', resourceIds)
-      : { data: [], error: null };
-    if (interestsError) throw interestsError;
-    const interestCounts = (interests || []).reduce((counts, interest) => {
-      counts[interest.event_id] = (counts[interest.event_id] || 0) + 1;
-      return counts;
-    }, {});
+    
+    if (resourceIds.length) {
+      try {
+        const { data: interests, error: interestsError } = await adminClient
+          .from('event_interests')
+          .select('event_id')
+          .in('event_id', resourceIds);
+        
+        if (!interestsError) {
+          interestCounts = (interests || []).reduce((counts, interest) => {
+            counts[interest.event_id] = (counts[interest.event_id] || 0) + 1;
+            return counts;
+          }, {});
+        }
+      } catch (e) {
+        // Silently ignore if event_interests table doesn't exist
+        console.warn('event_interests table not available:', e.message);
+      }
+    }
+
     const events = (data || []).map((resource) => ({
       id: resource.id,
       ...resource.payload,
@@ -144,7 +131,7 @@ app.get('/api/events', async (req, res, next) => {
     }));
 
     return res.json({
-      events: events.length ? events : fallback,
+      events: events,
     });
   } catch (error) {
     return next(error);
@@ -1024,6 +1011,18 @@ adminRouter.post(
     }
 
     try {
+      // Normalize dates to ISO format for events
+      const payload = { ...req.body };
+      if (req.params.type === 'events') {
+        // Convert datetime-local format to ISO 8601
+        if (payload.date && typeof payload.date === 'string') {
+          payload.date = new Date(payload.date).toISOString();
+        }
+        if (payload.endDate && typeof payload.endDate === 'string') {
+          payload.endDate = new Date(payload.endDate).toISOString();
+        }
+      }
+
       const {
         data,
         error,
@@ -1032,7 +1031,7 @@ adminRouter.post(
         .insert({
           resource_type:
             req.params.type,
-          payload: req.body,
+          payload: payload,
           created_by:
             req.admin.id,
         })
@@ -1079,13 +1078,25 @@ adminRouter.patch(
     }
 
     try {
+      // Normalize dates to ISO format for events
+      const payload = { ...req.body };
+      if (req.params.type === 'events') {
+        // Convert datetime-local format to ISO 8601
+        if (payload.date && typeof payload.date === 'string') {
+          payload.date = new Date(payload.date).toISOString();
+        }
+        if (payload.endDate && typeof payload.endDate === 'string') {
+          payload.endDate = new Date(payload.endDate).toISOString();
+        }
+      }
+
       const {
         data,
         error,
       } = await adminClient
         .from('admin_resources')
         .update({
-          payload: req.body,
+          payload: payload,
           updated_at:
             new Date().toISOString(),
         })
@@ -1117,6 +1128,47 @@ adminRouter.patch(
       res.json({
         resource: data,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+adminRouter.delete(
+  '/resources/:type/:id',
+  validResourceType,
+  async (req, res, next) => {
+    try {
+      if (req.params.type === 'events') {
+        try {
+          await adminClient
+            .from('event_interests')
+            .delete()
+            .eq('event_id', req.params.id);
+        } catch (interestError) {
+          console.warn('Unable to clear event interests before deletion:', interestError.message);
+        }
+      }
+
+      const { error } = await adminClient
+        .from('admin_resources')
+        .delete()
+        .eq('id', req.params.id)
+        .eq('resource_type', req.params.type);
+
+      if (error) {
+        throw error;
+      }
+
+      await writeAuditLog({
+        actorId: req.admin.id,
+        action: `${req.params.type}.deleted`,
+        targetType: req.params.type,
+        targetId: req.params.id,
+        details: { deleted: true },
+      });
+
+      res.json({ success: true, deletedId: req.params.id });
     } catch (error) {
       next(error);
     }

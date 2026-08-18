@@ -190,8 +190,9 @@
 
 .primary-action {
   padding: 0 18px;
-  background: #1d1d1d;
-  color: #fff;
+  background: #edf7ef;
+  color: #e3e7e4;
+  border-color: #007417;
 }
 
 .secondary-action {
