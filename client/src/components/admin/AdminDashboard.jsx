@@ -53,7 +53,7 @@ function JobsAndEvents() {
 const publishedNews = [
   ['Featured', 'Mar 12, 10:00 AM', '2024 Alumni Homecoming Gala Announced', 'Tickets are now available for the annual black-tie event...'],
   ['Announcement', 'Mar 10, 2:15 PM', 'Platform Maintenance Scheduled', 'The AlumniConnect platform will be undergoing scheduled...'],
-  ['Scheduled', 'Mar 15, 9:00 AM', 'New Mentorship Program Launch', ''],
+  ['Scheduled', 'Mar 15, 9:00 AM', 'New Alumni Gallery Launch', ''],
 ];
 
 function SocialAndNews() {

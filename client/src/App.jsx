@@ -4,6 +4,7 @@ import Feed from './components/Feed.jsx';
 import AboutNDDU from './components/AboutNDDU.jsx';
 import Opportunities from './components/Opportunities';
 import Events from './components/Events.jsx';
+import Gallery from './components/Gallery.jsx';
 import Register from './Register.jsx';
 import Login from './Login.jsx';
 import Profile from './components/Profile.jsx';
@@ -51,6 +52,8 @@ const Icon = ({ name, size = 18 }) => {
         <path d="M4 21a8 8 0 0 1 16 0" />
       </>
     ),
+
+    comment: <path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" />,
   };
 
   return (
@@ -78,6 +81,8 @@ function App() {
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountProfile, setAccountProfile] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState('Home');
 
@@ -102,13 +107,45 @@ function App() {
     setAccountMenuOpen(false);
   }
 
+  const unreadNotifications = notifications.filter((notification) => !notification.read_at).length;
+
+  function notificationText(notification) {
+    if (notification.kind === 'comment') return `${notification.actor_name} commented on your post.`;
+    const reaction = notification.reaction === 'celebrate' ? 'celebrated' : notification.reaction === 'support' ? 'supported' : 'liked';
+    return `${notification.actor_name} ${reaction} your post.`;
+  }
+
+  function notificationTime(value) {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000));
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    if (minutes < 1440) return `${Math.floor(minutes / 60)} hr ago`;
+    return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  async function openNotification(notification) {
+    if (!notification.read_at) {
+      const { error } = await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', notification.id);
+      if (!error) setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
+    }
+    setNotificationsOpen(false);
+    setActiveTab('Feed');
+  }
+
+  async function markAllNotificationsRead() {
+    if (!user?.id || unreadNotifications === 0) return;
+    const readAt = new Date().toISOString();
+    const { error } = await supabase.from('notifications').update({ read_at: readAt }).eq('recipient_id', user.id).is('read_at', null);
+    if (!error) setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || readAt })));
+  }
+
   const navItems = [
     'Home',
     'About NDDU',
     'Feed',
     'Opportunities',
     'Events',
-    'Mentorship',
+    'Gallery',
   ];
 
   const accountFirstName =
@@ -158,6 +195,32 @@ function App() {
   }, [user]);
 
   useEffect(() => {
+    if (!user?.id) {
+      setNotifications([]);
+      setNotificationsOpen(false);
+      return undefined;
+    }
+
+    let active = true;
+    const loadNotifications = async () => {
+      const { data, error } = await supabase.from('notifications').select('*').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(30);
+      if (active && !error) setNotifications(data || []);
+    };
+    loadNotifications();
+
+    const channel = supabase.channel(`notifications:${user.id}`).on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
+      loadNotifications
+    ).subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!user) {
       setAccountProfile(null);
       return;
@@ -194,9 +257,9 @@ function App() {
     },
     {
       icon: 'chart',
-      title: 'Give Back',
-      text: 'Share your knowledge through mentorship.',
-      action: 'Become a mentor',
+      title: 'View Memories',
+      text: 'Explore photos shared by the alumni community.',
+      action: 'Open gallery',
     },
   ];
 
@@ -248,6 +311,18 @@ function App() {
 
   return (
     <div className="app-shell">
+      <div className="institution-bar">
+        <div>
+          <a href="tel:+63835524444">(083) 552 4444</a>
+          <span aria-hidden="true">|</span>
+          <a href="mailto:info@nddu.edu.ph">info@nddu.edu.ph</a>
+        </div>
+
+        <a href="https://www.nddu.edu.ph/" target="_blank" rel="noreferrer">
+          NDDU official website
+        </a>
+      </div>
+
       <header className="topbar">
         <a
           className="brand"
@@ -284,12 +359,44 @@ function App() {
         <div className="header-actions">
           {user ? (
             <>
-              <button
-                aria-label="Notifications"
-                className="icon-button"
-              >
-                <Icon name="bell" />
-              </button>
+              <div className="notification-wrap">
+                <button
+                  aria-label={unreadNotifications ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+                  aria-expanded={notificationsOpen}
+                  className="icon-button notification-button"
+                  onClick={() => {
+                    setNotificationsOpen((open) => !open);
+                    setAccountMenuOpen(false);
+                  }}
+                >
+                  <Icon name="bell" />
+                  {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>}
+                </button>
+
+                {notificationsOpen && (
+                  <section className="notification-panel" aria-label="Notifications">
+                    <header>
+                      <h2>Notifications</h2>
+                      {unreadNotifications > 0 && <button type="button" onClick={markAllNotificationsRead}>Mark all as read</button>}
+                    </header>
+                    {notifications.length === 0 ? (
+                      <p className="notification-empty">You have no notifications yet.</p>
+                    ) : (
+                      <ul>
+                        {notifications.map((notification) => (
+                          <li key={notification.id} className={notification.read_at ? '' : 'unread'}>
+                            <button type="button" onClick={() => openNotification(notification)}>
+                              <span className="notification-symbol"><Icon name={notification.kind === 'comment' ? 'comment' : 'user'} /></span>
+                              <span><strong>{notificationText(notification)}</strong><small>{notificationTime(notification.created_at)}</small></span>
+                              {!notification.read_at && <i aria-label="Unread notification" />}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                )}
+              </div>
 
               <button
                 aria-label="Account settings"
@@ -304,7 +411,10 @@ function App() {
                   className="account-trigger"
                   aria-expanded={accountMenuOpen}
                   onClick={() =>
-                    setAccountMenuOpen((open) => !open)
+                    setAccountMenuOpen((open) => {
+                      setNotificationsOpen(false);
+                      return !open;
+                    })
                   }
                 >
                   <AccountAvatar />
@@ -421,6 +531,8 @@ function App() {
           <Feed user={user} profile={accountProfile} />
         ) : activeTab === 'Events' ? (
           <Events />
+        ) : activeTab === 'Gallery' ? (
+          <Gallery />
         ) : activeTab === 'Opportunities' ? (
           <Opportunities user={user} profile={accountProfile} />
         ) : (
@@ -431,22 +543,23 @@ function App() {
                 aria-hidden="true"
               >
                 <img
-                  src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1800&q=90"
+                  src="https://www.nddu.edu.ph/wp-content/uploads/2022/03/Slide-2-e1731164886823.png"
                   alt=""
                 />
               </div>
 
               <div className="hero-copy">
                 <p className="eyebrow">
-                  Notre Dame of Dadiangas University
+                  Education Towards Excellence and Human Integrity
                 </p>
 
-                <h1>Welcome home, Alumni.</h1>
+                <h1>
+                  Welcome home, {user ? accountFirstName : 'Alumni'}.
+                </h1>
 
                 <p>
-                  Reconnect with classmates, discover opportunities,
-                  and continue making a difference in the NDDU
-                  community.
+                  Welcome home. Reconnect with classmates, discover
+                  opportunities, and continue serving the NDDU community.
                 </p>
 
                 <div className="hero-actions">
@@ -530,7 +643,7 @@ function App() {
 
                   <div>
                     <strong>180+</strong>
-                    <span>Mentors ready to help</span>
+                    <span>Alumni photos shared</span>
                   </div>
 
                   <div>
@@ -627,9 +740,9 @@ function App() {
                   </div>
 
                   <p className="quote-copy">
-                    “The mentorship program at AlumniConnect
-                    helped me navigate my early career challenges
-                    and eventually launch my own startup...”
+                    “The alumni community helped me stay connected
+                    to NDDU friendships and milestones long after
+                    graduation.”
                   </p>
                 </article>
               </section>
@@ -665,7 +778,7 @@ function App() {
 
       <footer className="site-footer">
         <div>
-          <strong>ALUMNICONNECT</strong>
+          <strong>NDDU ALUMNICONNECT</strong>
 
           <p>
             © 2024 Alumni Management System. All rights reserved.
@@ -676,6 +789,9 @@ function App() {
           <a href="#privacy">Privacy Policy</a>
           <a href="#terms">Terms of Service</a>
           <a href="#support">Contact Support</a>
+          <a href="https://www.nddu.edu.ph/" target="_blank" rel="noreferrer">
+            NDDU Website
+          </a>
         </div>
       </footer>
 

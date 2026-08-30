@@ -1,6 +1,10 @@
 # Admin security setup
 
 1. In the Supabase SQL Editor, run [`supabase/schema.sql`](supabase/schema.sql).
+   The schema creates the profile update RPC and the `profile-avatars`,
+   `feed-media`, `verification-documents`, and `event-images` buckets with
+   their access policies. Re-run the complete schema after pulling schema
+   changes; it is designed to update existing installations safely.
 2. Copy `server/.env.example` to `server/.env` and add values from your Supabase project settings. The service-role key belongs only in `server/.env`.
 3. Create an account, then promote it in the SQL Editor. A successful Supabase
    password sign-in alone is intentionally not enough to enter `/admin`:
@@ -25,5 +29,7 @@
    ```
 
 4. Keep the client URL in `CLIENT_ORIGIN` exact. For a deployed site, set it to its HTTPS origin.
+   `SUPABASE_QUERY_TIMEOUT_MS` controls how long public event reads wait for
+   Supabase and defaults to 5000 milliseconds.
 
 The server verifies a user's Supabase access token, reads their role with its server-only service key, and records protected updates in `admin_audit_logs`. The client must never receive `SUPABASE_SERVICE_ROLE_KEY`.

@@ -1752,7 +1752,7 @@
 .admin-operations-page .events-attendance-panel > .panel-heading > .panel-link { display: none; }
 .operations-summary article { display: grid; gap: 3px; min-height: 104px; padding: 18px 20px; border: 1px solid #d4e2d8; border-radius: 8px; background: #fff; box-shadow: 0 3px 12px rgba(0, 59, 30, .04); }
 .operations-summary small, .admin-card-kicker, .job-approval-panel .panel-heading p, .events-attendance-panel .panel-heading p { margin: 0; color: #57806a; font-size: .69rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.operations-summary strong { color: #004a25; font-family: Georgia, 'Times New Roman', serif; font-size: 2rem; line-height: 1; }
+.operations-summary strong { color: var(--color-primary); font-family: var(--font-display); font-size: 2rem; line-height: 1; }
 .operations-summary span { color: #6f887a; font-size: .78rem; }
 .opportunity-admin-row { align-items: center; }
 .opportunity-admin-row > div { min-width: 0; }

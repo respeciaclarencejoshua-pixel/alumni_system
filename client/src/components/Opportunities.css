@@ -24,7 +24,7 @@
 
 .opportunities-header h1 {
   margin: 0;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 48px;
   line-height: 1.05;
   color: #003d1c;
@@ -241,7 +241,7 @@
 
 .opportunity-results-header h2 {
   margin: 0;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 27px;
   color: #003d1c;
 }
@@ -454,7 +454,7 @@
 .no-opportunities h3 {
   margin: 0 0 8px;
   color: #003d1c;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 24px;
 }
 
@@ -485,7 +485,7 @@
 .opportunity-modal { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: 28px 16px; background: rgba(0, 38, 17, .62); backdrop-filter: blur(3px); }
 .opportunity-dialog { width: min(680px, 100%); margin: auto; padding: 26px; border-radius: 14px; background: #fff; box-shadow: 0 24px 70px rgba(0,0,0,.28); }
 .opportunity-dialog header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 20px; }
-.opportunity-dialog h2 { margin: 0; color: #003d1c; font-family: Georgia, 'Times New Roman', serif; }
+.opportunity-dialog h2 { margin: 0; color: var(--color-primary); font-family: var(--font-display); }
 .opportunity-dialog h3 { margin: 24px 0 8px; color: #003d1c; }
 .opportunity-dialog header > button { border: 0; background: transparent; color: #315b45; font-size: 28px; cursor: pointer; }
 .opportunity-dialog label { display: block; margin: 14px 0; color: #174e35; font-size: 13px; font-weight: 700; }

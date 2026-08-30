@@ -5,10 +5,20 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({
+  path: path.join(__dirname, '../.env'),
+});
 
 const app = express();
 const port = process.env.PORT || 4000;
+const isProduction = process.env.NODE_ENV === 'production';
+const supabaseQueryTimeoutMs = Math.max(
+  Number.parseInt(process.env.SUPABASE_QUERY_TIMEOUT_MS, 10) || 5000,
+  1000
+);
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
@@ -18,6 +28,36 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+function isAllowedDevelopmentOrigin(origin) {
+  if (isProduction) {
+    return false;
+  }
+
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return (
+      ['http:', 'https:'].includes(protocol) &&
+      ['localhost', '127.0.0.1', '::1'].includes(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function runSupabaseQuery(query) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    supabaseQueryTimeoutMs
+  );
+
+  try {
+    return await query.abortSignal(controller.signal);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 const authClient =
   supabaseUrl && supabasePublishableKey
@@ -45,8 +85,7 @@ app.use(
         return callback(null, true);
       }
       
-      // Allow localhost in development
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      if (isAllowedDevelopmentOrigin(origin)) {
         return callback(null, true);
       }
       
@@ -55,7 +94,10 @@ app.use(
         return callback(null, true);
       }
 
-      return callback(new Error('Origin is not allowed by CORS'));
+      const corsError = new Error('Origin is not allowed by CORS');
+      corsError.status = 403;
+      corsError.publicMessage = 'Origin is not allowed by CORS.';
+      return callback(corsError);
     },
 
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
@@ -82,19 +124,21 @@ app.get('/api/status', (req, res) =>
 
 app.get('/api/events', async (req, res, next) => {
   if (!adminClient) {
-    return res.json({
-      events: [],
+    return res.status(503).json({
+      error: 'Public event data is not configured.',
     });
   }
 
   try {
-    const { data, error } = await adminClient
-      .from('admin_resources')
-      .select('*')
-      .eq('resource_type', 'events')
-      .order('created_at', {
-        ascending: false,
-      });
+    const { data, error } = await runSupabaseQuery(
+      adminClient
+        .from('admin_resources')
+        .select('*')
+        .eq('resource_type', 'events')
+        .order('created_at', {
+          ascending: false,
+        })
+    );
 
     if (error) {
       throw error;
@@ -106,10 +150,12 @@ app.get('/api/events', async (req, res, next) => {
     
     if (resourceIds.length) {
       try {
-        const { data: interests, error: interestsError } = await adminClient
-          .from('event_interests')
-          .select('event_id')
-          .in('event_id', resourceIds);
+        const { data: interests, error: interestsError } = await runSupabaseQuery(
+          adminClient
+            .from('event_interests')
+            .select('event_id')
+            .in('event_id', resourceIds)
+        );
         
         if (!interestsError) {
           interestCounts = (interests || []).reduce((counts, interest) => {
@@ -134,6 +180,9 @@ app.get('/api/events', async (req, res, next) => {
       events: events,
     });
   } catch (error) {
+    error.status = 503;
+    error.publicMessage =
+      'Public event data is temporarily unavailable. Check the Supabase connection and schema.';
     return next(error);
   }
 });
@@ -1224,8 +1273,8 @@ app.use(
   (error, req, res, next) => {
     console.error(error);
 
-    res.status(500).json({
-      error:
+    res.status(error.status || 500).json({
+      error: error.publicMessage ||
         'The server could not complete this request.',
     });
   }
@@ -1234,12 +1283,6 @@ app.use(
 /* =========================================================
    SERVE FRONTEND
 ========================================================= */
-
-const __filename =
-  fileURLToPath(import.meta.url);
-
-const __dirname =
-  path.dirname(__filename);
 
 const clientDist = path.join(
   __dirname,
