@@ -45,6 +45,21 @@ function EventCountdown({ startDate, endDate }) {
   return <div className="event-countdown"><p>{end && now >= start ? 'Event ends in' : 'Event starts in'}</p><div>{parts.map((part, index) => <span key={['Days', 'Hours', 'Minutes', 'Seconds'][index]}><strong>{String(part).padStart(2, '0')}</strong><small>{['Days', 'Hours', 'Minutes', 'Seconds'][index]}</small></span>)}</div></div>;
 }
 
+function EventVisual({ event, compact = false }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  if (event?.image_url && !imageFailed) {
+    return <img src={event.image_url} alt={`${event.title} event`} loading="lazy" onError={() => setImageFailed(true)} />;
+  }
+  return <div className="event-image-fallback" aria-label="No event image available"><span className="event-fallback-mark" aria-hidden="true">NDDU</span><span className="event-fallback-icon" aria-hidden="true">▦</span><div><small>{event?.category || 'Alumni event'}</small><strong>NDDU Alumni Events</strong><time>{formatMonthDay(event?.date)}</time></div></div>;
+}
+
+function EventLocationMap({ event }) {
+  const lat = Number(event.latitude), lng = Number(event.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const query = encodeURIComponent(`${lat},${lng}`);
+  return <section className="public-event-map" aria-label="Event map"><iframe title={`Map for ${event.title}`} src={`https://www.google.com/maps?q=${query}&z=16&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade"/><a href={`https://www.google.com/maps/dir/?api=1&destination=${query}`} target="_blank" rel="noreferrer">Open directions in Google Maps ↗</a></section>;
+}
+
 export default function EventsPage() {
   const [events, setEvents] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All Events');
@@ -53,7 +68,6 @@ export default function EventsPage() {
   const [dateSearch, setDateSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedYear, setSelectedYear] = useState('all');
-  const [viewMode, setViewMode] = useState('list');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [interestedIds, setInterestedIds] = useState([]);
   const [eventMessage, setEventMessage] = useState('');
@@ -154,9 +168,9 @@ export default function EventsPage() {
         </div>
 
         <section className="events-date-toolbar" aria-label="Event date and search controls">
-          <div className="date-select-group"><span aria-hidden="true">▦</span><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}><option value="all">All months</option>{monthNames.map((month, index) => <option key={month} value={index}>{month}</option>)}</select><select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}><option value="all">All years</option>{eventYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></div>
-          <label className="event-search"><span aria-hidden="true">⌕</span><input value={dateSearch} onChange={(event) => setDateSearch(event.target.value)} placeholder="Search events" /></label>
-          <div className="event-view-switch" aria-label="View mode">{['yearly', 'monthly', 'weekly', 'daily', 'list'].map((mode) => <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)}>{mode}</button>)}</div>
+          <label className="event-search"><span aria-hidden="true">⌕</span><input value={dateSearch} onChange={(event) => setDateSearch(event.target.value)} placeholder="Search by title, description, or place" /></label>
+          <div className="date-select-group"><select aria-label="Filter by month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}><option value="all">All months</option>{monthNames.map((month, index) => <option key={month} value={index}>{month}</option>)}</select><select aria-label="Filter by year" value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}><option value="all">All years</option>{eventYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></div>
+          <button className="clear-event-filters" type="button" onClick={()=>{setSelectedCategory('All Events');setSelectedTimeframe('Upcoming');setLocationFilter('');setDateSearch('');setSelectedMonth('all');setSelectedYear('all');}}>Reset</button>
         </section>
 
         <div className="events-layout">
@@ -166,7 +180,7 @@ export default function EventsPage() {
               {categories.map((category) => (
                 <label key={category} className="filter-option">
                   <input
-                    type="checkbox"
+                    type="radio" name="event-category"
                     checked={selectedCategory === category}
                     onChange={() => setSelectedCategory(category)}
                   />
@@ -180,7 +194,7 @@ export default function EventsPage() {
               {['Upcoming', 'Past Events'].map((period) => (
                 <label key={period} className="filter-option">
                   <input
-                    type="checkbox"
+                    type="radio" name="event-timeframe"
                     checked={selectedTimeframe === period}
                     onChange={() => setSelectedTimeframe(period)}
                   />
@@ -209,9 +223,7 @@ export default function EventsPage() {
             ) : (
               <>
                 <article className="featured-event-card">
-                  <div className="featured-image" style={featuredEvent.image_url ? { backgroundImage: `url(${featuredEvent.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
-                    {!featuredEvent.image_url && <span>Image placeholder</span>}
-                  </div>
+                  <div className="featured-image"><EventVisual event={featuredEvent}/></div>
 
                   <div className="featured-copy">
                     <span className="featured-badge">{featuredEvent.category || 'Event'}</span>
@@ -220,7 +232,7 @@ export default function EventsPage() {
                     <p className="event-place-line">{featuredEvent.location}</p>
                     <p className="event-description">{featuredEvent.description}</p>
                     <div className="cta-row">
-                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? '✕ Remove interest' : 'I\'m interested'}</button>
+                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? 'Remove interest' : 'I\'m interested'}</button>
                       <button type="button" className="secondary-action" onClick={() => setSelectedEvent(featuredEvent)}>View details</button>
                     </div>
                   </div>
@@ -229,9 +241,7 @@ export default function EventsPage() {
                 <div className="event-grid">
                   {otherEvents.slice(0, 2).map((event) => (
                     <article key={event.id} className="mini-event-card">
-                      <div className="mini-event-image" style={event.image_url ? { backgroundImage: `url(${event.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
-                        {!event.image_url && <span>Image</span>}
-                      </div>
+                      <div className="mini-event-image"><EventVisual event={event} compact/></div>
 
                       <div className="mini-event-body">
                         <h3>{event.title}</h3>
@@ -275,7 +285,7 @@ export default function EventsPage() {
           </main>
         </div>
         {eventMessage && <p className="event-feedback">{eventMessage}</p>}
-        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image" style={selectedEvent.image_url ? { backgroundImage: `url(${selectedEvent.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} alumni interested</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? '✕ Remove interest' : 'I\'m interested'}</button></div></section></div>}
+        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} alumni interested</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? 'Remove interest' : 'I\'m interested'}</button></div></section></div>}
       </div>
     </div>
   );

@@ -3,6 +3,9 @@ import './AdminDashboard.css';
 import Members from './Members.jsx';
 import AlumniVerification from './AlumniVerification.jsx';
 import OpportunitiesEvents from './OpportunitiesEvents.jsx';
+import AdminOverview from './AdminOverview.jsx';
+import CommunityContent from './CommunityContent.jsx';
+import SystemSettings from './SystemSettings.jsx';
 
 const metrics = [
   ['Total alumni', '12,482', '↑ 4.2% this month', 'positive'], ['Verified alumni', '9,102', '73% of total', ''],
@@ -103,7 +106,8 @@ export default function AdminDashboard({ onSignOut }) {
       <div className="admin-user"><b>AU</b><span><strong>Admin User</strong><small>Super administrator</small></span></div><button className="admin-report" onClick={onSignOut}>Sign out</button>
     </aside>
     <section className="admin-content">
-      {activePage === 'Dashboard' && <>
+      {activePage === 'Dashboard' && <AdminOverview onNavigate={setActivePage} />}
+      {false && <>
         <header className="admin-page-header"><div><p>Community overview</p><h1>Alumni System Dashboard</h1><span>Monitor alumni engagement, content, and community operations.</span></div><button>▣ Last 30 days</button></header>
         <section className="admin-metrics">{metrics.map(([label, value, note, tone]) => <article className={`admin-metric ${tone}`} key={label}><p>{label}</p><strong>{value}</strong><span>{note}</span></article>)}</section>
         <section className="admin-insights"><article className="admin-panel chart-panel"><div className="panel-heading"><h2>Employment Rate & User Activity</h2><span>■ Employment &nbsp; <i>■</i> Activity</span></div><div className="admin-bars">{[60, 40, 70, 48, 52, 30, 66, 55, 75, 34].map((height, index) => <i key={index} className={index % 2 ? 'activity-bar' : 'employment-bar'} style={{ height: `${height}%` }} />)}</div><div className="chart-labels"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span></div></article>
@@ -114,9 +118,9 @@ export default function AdminDashboard({ onSignOut }) {
       {activePage === 'Members' && <Members />}
       {activePage === 'Alumni Verification' && <AlumniVerification />}
       {activePage === 'Opportunities & Events' && <OpportunitiesEvents />}
-      {activePage === 'Social & News' && <SocialAndNews />}
-      {activePage === 'Analytics' && <Analytics />}
-      {activePage === 'Settings' && <Settings />}
+      {activePage === 'Social & News' && <CommunityContent />}
+      {activePage === 'Analytics' && <AdminOverview onNavigate={setActivePage} />}
+      {activePage === 'Settings' && <SystemSettings />}
     </section>
   </div>;
 

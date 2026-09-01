@@ -306,6 +306,178 @@ adminRouter.get('/me', (req, res) => {
   });
 });
 
+app.get('/api/gallery', async (req, res, next) => {
+  if (!adminClient) return res.status(503).json({ error: 'Gallery data is not configured.' });
+  try {
+    const { data, error } = await runSupabaseQuery(adminClient.from('gallery_submissions').select('id, author_name, title, description, category, photo_date, batch_year, people_names, image_path, featured, created_at').eq('status', 'approved').order('featured', { ascending: false }).order('created_at', { ascending: false }));
+    if (error) throw error;
+    const photos = await Promise.all((data || []).map(async (photo) => {
+      const { data: signed, error: signedError } = await adminClient.storage.from('gallery-media').createSignedUrl(photo.image_path, 3600);
+      if (signedError) throw signedError;
+      return { ...photo, url: signed.signedUrl };
+    }));
+    res.json({ photos });
+  } catch (error) { next(error); }
+});
+
+/* =========================================================
+   LIVE ADMIN OVERVIEW
+========================================================= */
+
+adminRouter.get('/overview', async (req, res, next) => {
+  const count = async (table, configure = (query) => query) => {
+    const { count: total, error } = await runSupabaseQuery(
+      configure(adminClient.from(table).select('*', { count: 'exact', head: true }))
+    );
+    if (error) throw error;
+    return total || 0;
+  };
+
+  try {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const [totalAlumni, verifiedAlumni, newRegistrations, pendingApprovals, posts,
+      galleryPhotos, opportunities, events, eventResponses, messages, recentPosts,
+      recentOpportunities, recentEvents] = await Promise.all([
+      count('profiles', (q) => q.eq('role', 'alumni')),
+      count('profiles', (q) => q.eq('role', 'alumni').eq('status', 'verified')),
+      count('profiles', (q) => q.gte('created_at', since)),
+      count('alumni_verifications', (q) => q.eq('status', 'pending')),
+      count('feed_posts'),
+      count('gallery_submissions', (q) => q.eq('status', 'approved')),
+      count('opportunities', (q) => q.eq('status', 'active')),
+      count('admin_resources', (q) => q.eq('resource_type', 'events')),
+      count('event_interests'),
+      count('direct_messages'),
+      runSupabaseQuery(adminClient.from('feed_posts').select('id, author_name, content, created_at').order('created_at', { ascending: false }).limit(4)),
+      runSupabaseQuery(adminClient.from('opportunities').select('id, author_name, title, created_at').order('created_at', { ascending: false }).limit(4)),
+      runSupabaseQuery(adminClient.from('admin_resources').select('id, payload, created_at').eq('resource_type', 'events').order('created_at', { ascending: false }).limit(4)),
+    ]);
+
+    const queryResults = [recentPosts, recentOpportunities, recentEvents];
+    const queryError = queryResults.find((result) => result.error)?.error;
+    if (queryError) throw queryError;
+
+    const [educationResult, rolesResult, profilesResult, contributionsResult, commentsResult, reactionsResult] = await Promise.all([
+      runSupabaseQuery(adminClient.from('education').select('profile_id, course, department, graduation_year, batch_name')),
+      runSupabaseQuery(adminClient.from('profile_roles').select('profile_id, role')),
+      runSupabaseQuery(adminClient.from('profiles').select('id, first_name, last_name, email, role')),
+      runSupabaseQuery(adminClient.from('feed_posts').select('user_id')),
+      runSupabaseQuery(adminClient.from('feed_comments').select('user_id')),
+      runSupabaseQuery(adminClient.from('feed_reactions').select('user_id')),
+    ]);
+    const analyticsError = [educationResult, rolesResult, profilesResult, contributionsResult, commentsResult, reactionsResult].find((result) => result.error)?.error;
+    if (analyticsError) throw analyticsError;
+
+    const rankedCounts = (items, key) => Object.entries((items || []).reduce((counts, item) => {
+      const value = item[key] || 'Not specified'; counts[value] = (counts[value] || 0) + 1; return counts;
+    }, {})).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+
+    const rolesByUser = (rolesResult.data || []).reduce((map, item) => {
+      if (!map[item.profile_id]) map[item.profile_id] = new Set();
+      map[item.profile_id].add(item.role);
+      return map;
+    }, {});
+    (profilesResult.data || []).forEach((profile) => {
+      if (!rolesByUser[profile.id]) rolesByUser[profile.id] = new Set([profile.role || 'alumni']);
+    });
+    const roleCounts = { alumni: 0, employer: 0, dual: 0 };
+    Object.values(rolesByUser).forEach((roles) => {
+      if (roles.has('alumni')) roleCounts.alumni += 1;
+      if (roles.has('employer')) roleCounts.employer += 1;
+      if (roles.has('alumni') && roles.has('employer')) roleCounts.dual += 1;
+    });
+
+    const scores = {};
+    const addScore = (rows, points, field) => (rows || []).forEach((item) => {
+      if (!scores[item.user_id]) scores[item.user_id] = { score: 0, posts: 0, comments: 0, reactions: 0 };
+      scores[item.user_id].score += points; scores[item.user_id][field] += 1;
+    });
+    addScore(contributionsResult.data, 3, 'posts'); addScore(commentsResult.data, 2, 'comments'); addScore(reactionsResult.data, 1, 'reactions');
+    const profilesById = new Map((profilesResult.data || []).map((profile) => [profile.id, profile]));
+    const mostActive = Object.entries(scores).map(([id, detail]) => {
+      const profile = profilesById.get(id) || {};
+      return { id, name: [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.email || 'Member', ...detail };
+    }).sort((a, b) => b.score - a.score).slice(0, 5);
+
+    const activity = [
+      ...(recentPosts.data || []).map((item) => ({ id: item.id, type: 'Feed post', title: item.content?.slice(0, 90) || 'Photo shared', actor: item.author_name, created_at: item.created_at })),
+      ...(recentOpportunities.data || []).map((item) => ({ id: item.id, type: 'Opportunity', title: item.title, actor: item.author_name, created_at: item.created_at })),
+      ...(recentEvents.data || []).map((item) => ({ id: item.id, type: 'Event', title: item.payload?.title || 'Community event', actor: 'Administrator', created_at: item.created_at })),
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 8);
+
+    res.json({
+      metrics: { totalAlumni, verifiedAlumni, newRegistrations, pendingApprovals, posts, galleryPhotos, opportunities, events, eventResponses, messages, employers: roleCounts.employer, dualRole: roleCounts.dual },
+      demographics: {
+        departments: rankedCounts(educationResult.data, 'department'),
+        courses: rankedCounts(educationResult.data, 'course'),
+        graduationYears: rankedCounts(educationResult.data, 'graduation_year'),
+        batchNames: rankedCounts(educationResult.data, 'batch_name'),
+        roles: [{ label: 'Alumni', value: roleCounts.alumni }, { label: 'Employer', value: roleCounts.employer }, { label: 'Alumni + Employer', value: roleCounts.dual }],
+        mostActive,
+      },
+      activity,
+    });
+  } catch (error) { next(error); }
+});
+
+adminRouter.get('/community-content', async (req, res, next) => {
+  try {
+    const { data, error } = await runSupabaseQuery(
+      adminClient.from('feed_posts')
+        .select('id, user_id, author_name, author_avatar_url, content, media_path, created_at, feed_comments(count), feed_reactions(count)')
+        .order('created_at', { ascending: false }).limit(100)
+    );
+    if (error) throw error;
+    const posts = await Promise.all((data || []).map(async (post) => {
+      let mediaUrl = null;
+      if (post.media_path) {
+        const { data: publicData } = adminClient.storage.from('feed-media').getPublicUrl(post.media_path);
+        mediaUrl = publicData?.publicUrl || null;
+      }
+      return { ...post, media_url: mediaUrl, comment_count: post.feed_comments?.[0]?.count || 0, reaction_count: post.feed_reactions?.[0]?.count || 0 };
+    }));
+    res.json({ posts });
+  } catch (error) { next(error); }
+});
+
+adminRouter.delete('/community-content/:postId', async (req, res, next) => {
+  try {
+    const { data: post, error: findError } = await adminClient.from('feed_posts').select('id, media_path, author_name').eq('id', req.params.postId).maybeSingle();
+    if (findError) throw findError;
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+    const { error } = await adminClient.from('feed_posts').delete().eq('id', post.id);
+    if (error) throw error;
+    if (post.media_path) await adminClient.storage.from('feed-media').remove([post.media_path]);
+    await writeAuditLog({ actorId: req.admin.id, action: 'delete_community_post', targetType: 'feed_post', targetId: post.id, details: { author_name: post.author_name } });
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+adminRouter.get('/gallery-submissions', async (req, res, next) => {
+  try {
+    const { data, error } = await adminClient.from('gallery_submissions').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    const submissions = await Promise.all((data || []).map(async (item) => {
+      const { data: signed } = await adminClient.storage.from('gallery-media').createSignedUrl(item.image_path, 900);
+      return { ...item, url: signed?.signedUrl || null };
+    }));
+    res.json({ submissions });
+  } catch (error) { next(error); }
+});
+
+adminRouter.patch('/gallery-submissions/:id', async (req, res, next) => {
+  const status = String(req.body.status || '').toLowerCase();
+  if (!['needs_information','approved','rejected'].includes(status)) return res.status(400).json({ error: 'Choose a valid gallery decision.' });
+  const reviewerNote = String(req.body.reviewerNote || '').trim() || null;
+  if (status !== 'approved' && !reviewerNote) return res.status(400).json({ error: 'A reviewer note is required for this decision.' });
+  try {
+    const { data, error } = await adminClient.from('gallery_submissions').update({ status, reviewer_note: reviewerNote, reviewed_by: req.admin.id, reviewed_at: new Date().toISOString(), featured: status === 'approved' && Boolean(req.body.featured) }).eq('id', req.params.id).select('*').single();
+    if (error) throw error;
+    await writeAuditLog({ actorId: req.admin.id, action: `gallery.${status}`, targetType: 'gallery_submission', targetId: data.id, details: { reviewerNote, featured: data.featured } });
+    res.json({ submission: data });
+  } catch (error) { next(error); }
+});
+
 /* =========================================================
    MEMBERS
 ========================================================= */
@@ -380,6 +552,16 @@ adminRouter.get(
         throw error;
       }
 
+      const { data: roleRows, error: rolesError } = data.length
+        ? await adminClient.from('profile_roles').select('profile_id, role').in('profile_id', data.map((profile) => profile.id))
+        : { data: [], error: null };
+      if (rolesError) throw rolesError;
+      const rolesByProfile = (roleRows || []).reduce((map, item) => {
+        if (!map[item.profile_id]) map[item.profile_id] = [];
+        map[item.profile_id].push(item.role.toUpperCase());
+        return map;
+      }, {});
+
       /*
        * Get Supabase Auth users so we can determine
        * whether their email has been confirmed.
@@ -427,6 +609,10 @@ adminRouter.get(
             profile.role || 'alumni'
           ).toUpperCase(),
 
+          roles: rolesByProfile[profile.id]?.length
+            ? rolesByProfile[profile.id]
+            : [String(profile.role || 'alumni').toUpperCase()],
+
           status: String(
             profile.status || 'pending'
           ).replace(/^./, (letter) =>
@@ -442,6 +628,7 @@ adminRouter.get(
             Boolean(
               authUser?.email_confirmed_at
             ),
+          locked: Boolean(authUser?.banned_until && new Date(authUser.banned_until) > new Date()),
         };
       });
 
@@ -1279,6 +1466,71 @@ app.use(
     });
   }
 );
+
+adminRouter.post('/members', async (req, res, next) => {
+  const firstName = String(req.body.first_name || '').trim();
+  const lastName = String(req.body.last_name || '').trim();
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  const role = String(req.body.role || 'alumni').toLowerCase();
+  const status = String(req.body.status || 'pending').toLowerCase();
+  if (!firstName || !lastName || !/^\S+@\S+\.\S+$/.test(email) || password.length < 8) return res.status(400).json({ error: 'First name, last name, a valid email, and a password of at least 8 characters are required.' });
+  if (!['alumni','employer','staff','admin'].includes(role) || !['pending','verified','suspended'].includes(status)) return res.status(400).json({ error: 'Invalid role or account status.' });
+  let createdUser;
+  try {
+    const { data, error } = await adminClient.auth.admin.createUser({ email, password, email_confirm: Boolean(req.body.email_confirmed), user_metadata: { first_name: firstName, last_name: lastName } });
+    if (error) throw error;
+    createdUser = data.user;
+    const { error: profileError } = await adminClient.from('profiles').upsert({ id: createdUser.id, first_name: firstName, last_name: lastName, email, role, status });
+    if (profileError) throw profileError;
+    await writeAuditLog({ actorId: req.admin.id, action: 'member.created', targetType: 'profile', targetId: createdUser.id, details: { email, role, status } });
+    res.status(201).json({ id: createdUser.id });
+  } catch (error) { if (createdUser?.id) await adminClient.auth.admin.deleteUser(createdUser.id); next(error); }
+});
+
+adminRouter.get('/members/:id', async (req, res, next) => {
+  try {
+    const [{ data: profile, error }, { data: education }, { data: verification }, { data: authData, error: authError }] = await Promise.all([
+      adminClient.from('profiles').select('*').eq('id', req.params.id).maybeSingle(),
+      adminClient.from('education').select('*').eq('profile_id', req.params.id).order('created_at'),
+      adminClient.from('alumni_verifications').select('id, graduation_name, graduation_year, graduation_date, batch_name, program, document_filename, status, reviewer_note, created_at, reviewed_at').eq('user_id', req.params.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      adminClient.auth.admin.getUserById(req.params.id),
+    ]);
+    if (error || authError) throw error || authError;
+    if (!profile) return res.status(404).json({ error: 'Member not found.' });
+    const authUser = authData.user;
+    res.json({ member: { ...profile, education: education || [], verification: verification || null, email_confirmed: Boolean(authUser.email_confirmed_at), locked: Boolean(authUser.banned_until && new Date(authUser.banned_until) > new Date()), last_sign_in_at: authUser.last_sign_in_at } });
+  } catch (error) { next(error); }
+});
+
+adminRouter.patch('/members/:id', async (req, res, next) => {
+  const updates = {};
+  for (const field of ['first_name','last_name','email']) if (req.body[field] !== undefined) updates[field] = String(req.body[field]).trim();
+  if (req.body.role !== undefined) updates.role = String(req.body.role).toLowerCase();
+  if (req.body.status !== undefined) updates.status = String(req.body.status).toLowerCase();
+  if (!updates.first_name || !updates.last_name || !/^\S+@\S+\.\S+$/.test(updates.email || '')) return res.status(400).json({ error: 'A first name, last name, and valid email are required.' });
+  if (!['alumni','employer','staff','admin'].includes(updates.role) || !['pending','verified','suspended'].includes(updates.status)) return res.status(400).json({ error: 'Invalid role or account status.' });
+  if (req.params.id === req.admin.id && (updates.role !== req.admin.profile.role || updates.status === 'suspended')) return res.status(400).json({ error: 'You cannot demote or suspend your own administrator account.' });
+  try {
+    const { error: authError } = await adminClient.auth.admin.updateUserById(req.params.id, { email: updates.email, user_metadata: { first_name: updates.first_name, last_name: updates.last_name } });
+    if (authError) throw authError;
+    const { data, error } = await adminClient.from('profiles').update(updates).eq('id', req.params.id).select('*').single();
+    if (error) throw error;
+    await writeAuditLog({ actorId: req.admin.id, action: 'member.updated', targetType: 'profile', targetId: req.params.id, details: updates });
+    res.json({ member: data });
+  } catch (error) { next(error); }
+});
+
+adminRouter.patch('/members/:id/lock', async (req, res, next) => {
+  const locked = Boolean(req.body.locked);
+  if (req.params.id === req.admin.id && locked) return res.status(400).json({ error: 'You cannot lock your own administrator account.' });
+  try {
+    const { error } = await adminClient.auth.admin.updateUserById(req.params.id, { ban_duration: locked ? '876000h' : 'none' });
+    if (error) throw error;
+    await writeAuditLog({ actorId: req.admin.id, action: locked ? 'member.locked' : 'member.unlocked', targetType: 'profile', targetId: req.params.id });
+    res.json({ locked });
+  } catch (error) { next(error); }
+});
 
 /* =========================================================
    SERVE FRONTEND

@@ -163,6 +163,28 @@ using (
 -- 2. EDUCATION
 -- ============================================================
 
+create table if not exists public.profile_roles (
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null check (role in ('alumni', 'employer')),
+  created_at timestamptz not null default now(),
+  primary key (profile_id, role)
+);
+alter table public.profile_roles enable row level security;
+drop policy if exists "Users can view own community roles" on public.profile_roles;
+create policy "Users can view own community roles" on public.profile_roles for select to authenticated using (profile_id = auth.uid());
+
+create table if not exists public.employer_profiles (
+  profile_id uuid primary key references public.profiles(id) on delete cascade,
+  organization text not null,
+  job_title text not null,
+  company_email text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.employer_profiles enable row level security;
+drop policy if exists "Users can view own employer profile" on public.employer_profiles;
+create policy "Users can view own employer profile" on public.employer_profiles for select to authenticated using (profile_id = auth.uid());
+
 create table if not exists public.education (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references public.profiles(id) on delete cascade,
@@ -171,8 +193,11 @@ create table if not exists public.education (
   department text,
   graduation_year integer,
   honors text,
+  batch_name text,
   created_at timestamptz not null default now()
 );
+
+alter table public.education add column if not exists batch_name text;
 
 alter table public.education enable row level security;
 
@@ -505,6 +530,45 @@ begin
 end;
 $$;
 
+-- ============================================================
+-- 11. CURATED ALUMNI GALLERY
+-- ============================================================
+
+create table if not exists public.gallery_submissions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  author_name text not null,
+  title text not null check (char_length(trim(title)) between 3 and 120),
+  description text not null check (char_length(trim(description)) between 10 and 1500),
+  category text not null check (category in ('Campus Memories','Graduation','Reunion','Alumni Achievement','University Event','Community Service')),
+  photo_date date,
+  batch_year smallint check (batch_year is null or batch_year between 1953 and 2100),
+  people_names text,
+  image_path text not null,
+  status text not null default 'pending' check (status in ('pending','needs_information','approved','rejected')),
+  reviewer_note text,
+  reviewed_by uuid references public.profiles(id),
+  reviewed_at timestamptz,
+  featured boolean not null default false,
+  ownership_confirmed boolean not null check (ownership_confirmed),
+  consent_confirmed boolean not null check (consent_confirmed),
+  created_at timestamptz not null default now()
+);
+create index if not exists gallery_submissions_status_created_idx on public.gallery_submissions(status, created_at desc);
+alter table public.gallery_submissions enable row level security;
+drop policy if exists "Users can view own gallery submissions" on public.gallery_submissions;
+drop policy if exists "Verified users can submit gallery photos" on public.gallery_submissions;
+create policy "Users can view own gallery submissions" on public.gallery_submissions for select to authenticated using (user_id = auth.uid());
+create policy "Verified users can submit gallery photos" on public.gallery_submissions for insert to authenticated with check (user_id = auth.uid() and status = 'pending' and public.is_verified_user());
+
+insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
+values ('gallery-media','gallery-media',false,10485760,array['image/jpeg','image/png','image/webp'])
+on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+drop policy if exists "Users can upload own gallery media" on storage.objects;
+drop policy if exists "Users can view own gallery media" on storage.objects;
+create policy "Users can upload own gallery media" on storage.objects for insert to authenticated with check (bucket_id='gallery-media' and (storage.foldername(name))[1]=auth.uid()::text and public.is_verified_user());
+create policy "Users can view own gallery media" on storage.objects for select to authenticated using (bucket_id='gallery-media' and (storage.foldername(name))[1]=auth.uid()::text);
+
 
 -- ============================================================
 -- 5. OPPORTUNITIES
@@ -706,14 +770,20 @@ begin
     id,
     first_name,
     last_name,
-    email
+    email,
+    role
   )
 
   values (
     new.id,
     new.raw_user_meta_data ->> 'first_name',
     new.raw_user_meta_data ->> 'last_name',
-    new.email
+    new.email,
+    case
+      when coalesce(new.raw_user_meta_data -> 'roles', '[]'::jsonb) ? 'alumni' then 'alumni'
+      when coalesce(new.raw_user_meta_data -> 'roles', '[]'::jsonb) ? 'employer' then 'employer'
+      else 'alumni'
+    end
   )
 
   on conflict (id) do update set
@@ -728,6 +798,40 @@ begin
     ),
 
     email = excluded.email;
+
+  insert into public.profile_roles (profile_id, role)
+  select new.id, selected_role
+  from jsonb_array_elements_text(coalesce(new.raw_user_meta_data -> 'roles', '["alumni"]'::jsonb)) as selected_role
+  where selected_role in ('alumni', 'employer')
+  on conflict (profile_id, role) do nothing;
+
+  if coalesce(new.raw_user_meta_data -> 'roles', '[]'::jsonb) ? 'employer' then
+    insert into public.employer_profiles (profile_id, organization, job_title, company_email)
+    values (
+      new.id,
+      nullif(trim(new.raw_user_meta_data ->> 'organization'), ''),
+      nullif(trim(new.raw_user_meta_data ->> 'job_title'), ''),
+      nullif(trim(new.raw_user_meta_data ->> 'company_email'), '')
+    );
+  end if;
+
+  if nullif(new.raw_user_meta_data ->> 'course', '') is not null then
+    insert into public.education (
+      profile_id, degree, course, department, graduation_year, honors, batch_name
+    ) values (
+      new.id,
+      nullif(new.raw_user_meta_data ->> 'degree', ''),
+      nullif(new.raw_user_meta_data ->> 'course', ''),
+      nullif(new.raw_user_meta_data ->> 'department', ''),
+      case
+        when (new.raw_user_meta_data ->> 'graduation_year') ~ '^\d{4}$'
+          then (new.raw_user_meta_data ->> 'graduation_year')::integer
+        else null
+      end,
+      nullif(new.raw_user_meta_data ->> 'honors', ''),
+      nullif(new.raw_user_meta_data ->> 'batch_name', '')
+    );
+  end if;
 
   return new;
 
@@ -862,3 +966,103 @@ for delete to authenticated using (
 -- ============================================================
 -- END OF SCHEMA
 -- ============================================================
+
+-- ============================================================
+-- 10. PRIVATE ALUMNI CHAT
+-- ============================================================
+
+create table if not exists public.direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null check (char_length(trim(body)) between 1 and 2000),
+  read_at timestamptz,
+  created_at timestamptz not null default now(),
+  check (sender_id <> recipient_id)
+);
+
+alter table public.direct_messages add column if not exists message_type text not null default 'text';
+alter table public.direct_messages add column if not exists attachment_url text;
+alter table public.direct_messages add column if not exists attachment_name text;
+alter table public.direct_messages add column if not exists attachment_type text;
+alter table public.direct_messages drop constraint if exists direct_messages_body_check;
+alter table public.direct_messages alter column body set default '';
+alter table public.direct_messages add constraint direct_messages_body_check check (
+  message_type in ('text', 'image', 'file', 'gif')
+  and char_length(body) <= 2000
+  and (char_length(trim(body)) > 0 or attachment_url is not null)
+);
+
+create index if not exists direct_messages_sender_recipient_created_idx
+on public.direct_messages (sender_id, recipient_id, created_at);
+create index if not exists direct_messages_recipient_unread_idx
+on public.direct_messages (recipient_id, created_at desc) where read_at is null;
+
+alter table public.direct_messages enable row level security;
+drop policy if exists "Participants can view direct messages" on public.direct_messages;
+drop policy if exists "Users can send direct messages" on public.direct_messages;
+drop policy if exists "Recipients can mark messages read" on public.direct_messages;
+create policy "Participants can view direct messages" on public.direct_messages
+for select to authenticated using (auth.uid() in (sender_id, recipient_id));
+create policy "Users can send direct messages" on public.direct_messages
+for insert to authenticated with check (auth.uid() = sender_id and recipient_id <> auth.uid());
+create policy "Recipients can mark messages read" on public.direct_messages
+for update to authenticated using (auth.uid() = recipient_id)
+with check (auth.uid() = recipient_id and sender_id <> auth.uid());
+
+-- Returns only public chat-directory fields; email and other profile data stay private.
+create or replace function public.list_chat_profiles()
+returns table (
+  id uuid, first_name text, last_name text, avatar_url text, role text,
+  unread_count bigint, last_message_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.id, p.first_name, p.last_name, p.avatar_url, p.role,
+    count(dm.id) filter (where dm.recipient_id = auth.uid() and dm.read_at is null) as unread_count,
+    max(dm.created_at) as last_message_at
+  from public.profiles p
+  left join public.direct_messages dm
+    on (dm.sender_id = p.id and dm.recipient_id = auth.uid())
+    or (dm.recipient_id = p.id and dm.sender_id = auth.uid())
+  where auth.uid() is not null and p.id <> auth.uid() and p.status <> 'suspended'
+  group by p.id, p.first_name, p.last_name, p.avatar_url, p.role
+  order by max(dm.created_at) desc nulls last, lower(coalesce(p.first_name, '')), lower(coalesce(p.last_name, ''));
+$$;
+
+revoke all on function public.list_chat_profiles() from public;
+grant execute on function public.list_chat_profiles() to authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('chat-attachments', 'chat-attachments', false, 15728640,
+  array['image/jpeg','image/png','image/webp','image/gif','application/pdf','text/plain',
+    'application/zip','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Users can upload own chat attachments" on storage.objects;
+drop policy if exists "Participants can view chat attachments" on storage.objects;
+create policy "Users can upload own chat attachments" on storage.objects for insert to authenticated with check (
+  bucket_id = 'chat-attachments' and (storage.foldername(name))[1] = auth.uid()::text
+);
+create policy "Participants can view chat attachments" on storage.objects for select to authenticated using (
+  bucket_id = 'chat-attachments' and exists (
+    select 1 from public.direct_messages m
+    where m.attachment_url = name and auth.uid() in (m.sender_id, m.recipient_id)
+  )
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'direct_messages'
+  ) then
+    alter publication supabase_realtime add table public.direct_messages;
+  end if;
+end;
+$$;

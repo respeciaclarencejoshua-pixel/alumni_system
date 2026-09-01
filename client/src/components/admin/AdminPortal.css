@@ -81,3 +81,5 @@
   background: #f0fdf4;
   color: #166534 !important;
 }
+
+.admin-access .captcha-box{display:grid;justify-items:center;gap:5px;margin:4px 0;padding:10px 0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}.admin-access .captcha-box>div{width:100%;min-height:65px}.admin-access .captcha-box small{color:var(--color-text-muted);font-size:.62rem;font-weight:400}.admin-access .captcha-config-error{padding:9px;border-radius:4px;background:#fff1f0;color:#b42318;font-size:.72rem}

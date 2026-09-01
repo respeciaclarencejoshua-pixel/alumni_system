@@ -2,99 +2,18 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import './Gallery.css';
 
-function photoUrl(path) {
-  return supabase.storage.from('feed-media').getPublicUrl(path).data.publicUrl;
-}
+const categories = ['Campus Memories','Graduation','Reunion','Alumni Achievement','University Event','Community Service'];
+const blank = { title:'', description:'', category:'Campus Memories', photoDate:'', batchYear:'', peopleNames:'', ownership:false, consent:false };
 
-function storyTitle(photo) {
-  const text = photo.content?.replace(/#[\p{L}\p{N}_]+/gu, '').trim();
-  if (!text) return `A memory shared by ${photo.author_name}`;
-  const firstLine = text.split(/[.!?\n]/)[0].trim();
-  return firstLine.length > 72 ? `${firstLine.slice(0, 69).trim()}...` : firstLine;
-}
-
-function storyExcerpt(photo) {
-  const text = photo.content?.trim();
-  if (!text) return 'A photo from the NDDU alumni community.';
-  const firstBreak = text.search(/[.!?\n]/);
-  const remaining = firstBreak >= 0 ? text.slice(firstBreak + 1).trim() : '';
-  const excerpt = remaining || 'A moment shared with the NDDU alumni community.';
-  return excerpt.length > 150 ? `${excerpt.slice(0, 147).trim()}...` : excerpt;
-}
-
-export default function Gallery() {
-  const [photos, setPhotos] = useState([]);
-  const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    supabase
-      .from('feed_posts')
-      .select('id, author_name, content, media_path, created_at')
-      .not('media_path', 'is', null)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (active) {
-          setPhotos((data || []).map((photo) => ({ ...photo, url: photoUrl(photo.media_path) })));
-          setLoading(false);
-        }
-      });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    if (!selectedPhoto) return undefined;
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setSelectedPhoto(null);
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [selectedPhoto]);
-
-  return (
-    <section className="gallery-page" aria-labelledby="gallery-title">
-      <header className="gallery-header">
-        <p>NDDU Alumni Community</p>
-        <h1 id="gallery-title">Alumni Gallery</h1>
-        <span>Reconnect through campus memories, reunions, achievements, and milestones shared by fellow alumni.</span>
-      </header>
-
-      {loading ? (
-        <p className="gallery-state">Loading gallery photos...</p>
-      ) : photos.length === 0 ? (
-        <div className="gallery-state">
-          <h2>No photos yet</h2>
-          <p>Photos added to alumni feed posts will appear here.</p>
-        </div>
-      ) : (
-        <div className="gallery-grid">
-          {photos.map((photo) => (
-            <article className="gallery-card" key={photo.id}>
-              <button className="gallery-card-image" type="button" onClick={() => setSelectedPhoto(photo)} aria-label={`Open ${storyTitle(photo)}`}>
-                <img src={photo.url} alt={photo.content || `Photo shared by ${photo.author_name}`} loading="lazy" />
-              </button>
-              <div className="gallery-card-copy">
-                <p className="gallery-card-meta"><span>Alumni memory</span><time dateTime={photo.created_at}>{new Date(photo.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</time></p>
-                <h2>{storyTitle(photo)}</h2>
-                <p className="gallery-card-description">{storyExcerpt(photo)}</p>
-                <p className="gallery-card-author">Shared by <strong>{photo.author_name}</strong></p>
-              </div>
-              <button className="gallery-card-action" type="button" onClick={() => setSelectedPhoto(photo)}>View photo</button>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {selectedPhoto && (
-        <div className="gallery-lightbox" role="dialog" aria-modal="true" aria-label="Gallery photo" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPhoto(null); }}>
-          <button className="gallery-close" type="button" onClick={() => setSelectedPhoto(null)} aria-label="Close photo">&times;</button>
-          <figure>
-            <img src={selectedPhoto.url} alt={selectedPhoto.content || `Photo shared by ${selectedPhoto.author_name}`} />
-            <figcaption><strong>{selectedPhoto.author_name}</strong>{selectedPhoto.content && <p>{selectedPhoto.content}</p>}</figcaption>
-          </figure>
-        </div>
-      )}
-    </section>
-  );
+export default function Gallery({ user, profile, verificationStatus }) {
+  const [photos,setPhotos]=useState([]); const [selectedPhoto,setSelectedPhoto]=useState(null); const [loading,setLoading]=useState(true);
+  const [submitOpen,setSubmitOpen]=useState(false); const [form,setForm]=useState(blank); const [file,setFile]=useState(null); const [message,setMessage]=useState(''); const [submitting,setSubmitting]=useState(false);
+  async function load(){setLoading(true);try{const response=await fetch('/api/gallery');const result=await response.json();if(!response.ok)throw new Error(result.error);setPhotos(result.photos||[]);}catch(error){setMessage(error.message);}finally{setLoading(false);}}
+  useEffect(()=>{load();},[]);
+  useEffect(()=>{if(!selectedPhoto)return;const close=(e)=>e.key==='Escape'&&setSelectedPhoto(null);window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[selectedPhoto]);
+  async function submit(event){event.preventDefault();if(!file)return setMessage('Choose a photo to submit.');setSubmitting(true);setMessage('');const path=`${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error:uploadError}=await supabase.storage.from('gallery-media').upload(path,file);if(uploadError){setMessage(uploadError.message);setSubmitting(false);return;}const author=[profile?.first_name,profile?.last_name].filter(Boolean).join(' ')||user.email;const {error}=await supabase.from('gallery_submissions').insert({user_id:user.id,author_name:author,title:form.title.trim(),description:form.description.trim(),category:form.category,photo_date:form.photoDate||null,batch_year:form.batchYear?Number(form.batchYear):null,people_names:form.peopleNames.trim()||null,image_path:path,ownership_confirmed:form.ownership,consent_confirmed:form.consent});if(error){await supabase.storage.from('gallery-media').remove([path]);setMessage(error.message);}else{setMessage('Photo submitted for Admin/Staff review.');setSubmitOpen(false);setForm(blank);setFile(null);}setSubmitting(false);}
+  return <section className="gallery-page"><header className="gallery-header"><div><p>NDDU Alumni Community</p><h1>Alumni Gallery</h1><span>A curated archive of campus memories, reunions, achievements, and milestones.</span></div>{user&&<button onClick={()=>setSubmitOpen(true)}>＋ Submit a photo</button>}</header>{message&&<p className="gallery-message">{message}</p>}{loading?<p className="gallery-state">Loading approved photos…</p>:photos.length?<div className="gallery-grid">{photos.map(photo=><article className="gallery-card" key={photo.id}><button className="gallery-card-image" onClick={()=>setSelectedPhoto(photo)} aria-label={`Read more about ${photo.title}`}><img src={photo.url} alt={photo.title} loading="lazy"/></button><div className="gallery-card-copy"><p className="gallery-card-meta"><span>{photo.featured?'Featured · ':''}{photo.category}</span><time>{new Date(photo.photo_date||photo.created_at).toLocaleDateString()}</time></p><h2>{photo.title}</h2><p className="gallery-card-description">{photo.description}</p><p className="gallery-card-author">Shared by <strong>{photo.author_name}</strong>{photo.batch_year&&` · Class of ${photo.batch_year}`}</p></div><button className="gallery-card-action" onClick={()=>setSelectedPhoto(photo)}>Read more</button></article>)}</div>:<div className="gallery-state"><h2>No approved photos yet</h2><p>Verified alumni can submit the first memory for review.</p></div>}
+  {submitOpen&&<div className="gallery-submit-backdrop" onMouseDown={e=>e.target===e.currentTarget&&setSubmitOpen(false)}><form className="gallery-submit" onSubmit={submit}><header><div><small>Curated gallery</small><h2>Submit a photo</h2></div><button type="button" onClick={()=>setSubmitOpen(false)}>×</button></header>{verificationStatus!=='verified'?<div className="gallery-submit-warning">Your alumni account must be verified before you can submit gallery photos.</div>:<><label>Photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setFile(e.target.files?.[0]||null)} required/></label><label>Title<input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} maxLength="120" required/></label><label>Story / description<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} minLength="10" maxLength="1500" required/></label><div><label>Category<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{categories.map(item=><option key={item}>{item}</option>)}</select></label><label>Date taken<input type="date" value={form.photoDate} onChange={e=>setForm({...form,photoDate:e.target.value})}/></label></div><div><label>Batch year<input type="number" min="1953" max={new Date().getFullYear()} value={form.batchYear} onChange={e=>setForm({...form,batchYear:e.target.value})}/></label><label>People shown (optional)<input value={form.peopleNames} onChange={e=>setForm({...form,peopleNames:e.target.value})}/></label></div><label className="gallery-check"><input type="checkbox" checked={form.ownership} onChange={e=>setForm({...form,ownership:e.target.checked})} required/> I own this photo or have permission to submit it.</label><label className="gallery-check"><input type="checkbox" checked={form.consent} onChange={e=>setForm({...form,consent:e.target.checked})} required/> I consent to publication in the NDDU Alumni Gallery.</label><footer><button type="button" onClick={()=>setSubmitOpen(false)}>Cancel</button><button disabled={submitting}>{submitting?'Submitting…':'Submit for review'}</button></footer></>}</form></div>}
+  {selectedPhoto&&<div className="gallery-lightbox" role="dialog" aria-modal="true" aria-label={selectedPhoto.title} onMouseDown={e=>e.target===e.currentTarget&&setSelectedPhoto(null)}><button className="gallery-close" onClick={()=>setSelectedPhoto(null)} aria-label="Close story">×</button><figure className="gallery-story"><div className="gallery-story-image"><img src={selectedPhoto.url} alt={selectedPhoto.title}/></div><figcaption><p className="gallery-story-category">{selectedPhoto.featured&&<b>Featured</b>}<span>{selectedPhoto.category}</span></p><h2>{selectedPhoto.title}</h2><p className="gallery-story-description">{selectedPhoto.description}</p><dl><div><dt>Shared by</dt><dd>{selectedPhoto.author_name}</dd></div><div><dt>Photo date</dt><dd>{new Date(selectedPhoto.photo_date||selectedPhoto.created_at).toLocaleDateString()}</dd></div>{selectedPhoto.batch_year&&<div><dt>Batch year</dt><dd>Class of {selectedPhoto.batch_year}</dd></div>}{selectedPhoto.people_names&&<div><dt>People shown</dt><dd>{selectedPhoto.people_names}</dd></div>}<div><dt>Submitted</dt><dd>{new Date(selectedPhoto.created_at).toLocaleDateString()}</dd></div></dl></figcaption></figure></div>}
+  </section>;
 }

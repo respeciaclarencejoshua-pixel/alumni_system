@@ -9,6 +9,7 @@ import Register from './Register.jsx';
 import Login from './Login.jsx';
 import Profile from './components/Profile.jsx';
 import AccountSettings from './components/AccountSettings.jsx';
+import Chat from './components/Chat.jsx';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -532,7 +533,7 @@ function App() {
         ) : activeTab === 'Events' ? (
           <Events />
         ) : activeTab === 'Gallery' ? (
-          <Gallery />
+          <Gallery user={user} profile={accountProfile} verificationStatus={verificationStatus} />
         ) : activeTab === 'Opportunities' ? (
           <Opportunities user={user} profile={accountProfile} />
         ) : (
@@ -838,6 +839,8 @@ function App() {
           onProfileChange={setAccountProfile}
         />
       )}
+
+      {user && <Chat user={user} />}
     </div>
   );
 }

@@ -12,8 +12,13 @@ export default function Members() {
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [confirmingUserId, setConfirmingUserId] = useState(null);
+  const [dialog, setDialog] = useState(null);
+  const [dialogMember, setDialogMember] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [verificationNote, setVerificationNote] = useState('');
+  const [memberForm, setMemberForm] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'alumni', status: 'pending', email_confirmed: true });
 
-  const usersPerPage = 4;
+  const usersPerPage = 8;
 
   useEffect(() => {
     loadMembers();
@@ -37,7 +42,7 @@ export default function Members() {
 
     // Role filter
     if (roleFilter !== 'All Roles') {
-      filtered = filtered.filter(user => user.role === roleFilter);
+      filtered = filtered.filter(user => (user.roles || [user.role]).includes(roleFilter));
     }
 
     // Status filter
@@ -96,6 +101,15 @@ export default function Members() {
       .slice(0, 2);
   };
 
+  const formatJoined = value => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return { date: 'Unknown', time: '' };
+    return {
+      date: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+    };
+  };
+
   async function handleConfirmEmail(user) {
     const confirmed = window.confirm(
       `Confirm the email address for ${user.name} (${user.email})?`
@@ -130,6 +144,70 @@ export default function Members() {
     }
   }
 
+  async function openView(user) {
+    setDialog('view'); setDialogMember(null); setActionError('');
+    try { const { member } = await adminApi(`/api/admin/members/${user.id}`); setDialogMember(member); setVerificationNote(member.verification?.reviewer_note || ''); }
+    catch (error) { setActionError(error.message); setDialog(null); }
+  }
+
+  async function openEdit(user) {
+    setDialog('edit'); setActionError('');
+    try {
+      const { member } = await adminApi(`/api/admin/members/${user.id}`);
+      setDialogMember(member);
+      setMemberForm({ first_name: member.first_name || '', last_name: member.last_name || '', email: member.email || '', password: '', role: member.role, status: member.status, email_confirmed: member.email_confirmed });
+    } catch (error) { setActionError(error.message); setDialog(null); }
+  }
+
+  function openAdd() {
+    setMemberForm({ first_name: '', last_name: '', email: '', password: '', role: 'alumni', status: 'pending', email_confirmed: true });
+    setDialogMember(null); setDialog('add'); setActionError('');
+  }
+
+  async function saveMember(event) {
+    event.preventDefault(); setSaving(true); setActionError('');
+    try {
+      if (dialog === 'add') await adminApi('/api/admin/members', { method: 'POST', body: JSON.stringify(memberForm) });
+      else await adminApi(`/api/admin/members/${dialogMember.id}`, { method: 'PATCH', body: JSON.stringify(memberForm) });
+      setDialog(null); await loadMembers();
+    } catch (error) { setActionError(error.message); }
+    finally { setSaving(false); }
+  }
+
+  async function toggleLock(user) {
+    const action = user.locked ? 'unlock' : 'lock';
+    if (!window.confirm(`${action === 'lock' ? 'Lock' : 'Unlock'} ${user.name}'s account?${action === 'lock' ? ' They will not be able to sign in.' : ''}`)) return;
+    try {
+      await adminApi(`/api/admin/members/${user.id}/lock`, { method: 'PATCH', body: JSON.stringify({ locked: !user.locked }) });
+      setUsers((items) => items.map((item) => item.id === user.id ? { ...item, locked: !item.locked } : item));
+    } catch (error) { setActionError(error.message); }
+  }
+
+  async function openVerificationDocument() {
+    if (!dialogMember?.verification?.id) return;
+    try { const { url } = await adminApi(`/api/admin/verifications/${dialogMember.verification.id}/document`); window.open(url, '_blank', 'noopener,noreferrer'); }
+    catch (error) { setActionError(error.message); }
+  }
+
+  async function decideVerification(status) {
+    if (!dialogMember?.verification) return;
+    if (status !== 'verified' && !verificationNote.trim()) return setActionError('Add a reviewer note before requesting information or rejecting a submission.');
+    setSaving(true); setActionError('');
+    try {
+      await adminApi(`/api/admin/verifications/${dialogMember.verification.id}`, { method: 'PATCH', body: JSON.stringify({ status, reviewerNote: verificationNote }) });
+      const { member } = await adminApi(`/api/admin/members/${dialogMember.id}`);
+      setDialogMember(member); await loadMembers();
+    } catch (error) { setActionError(error.message); }
+    finally { setSaving(false); }
+  }
+
+  function verificationPanel() {
+    const verification = dialogMember?.verification;
+    if (!verification) return <section className="member-verification empty"><h3>No verification submission</h3><p>This member has not uploaded graduation evidence yet.</p></section>;
+    const awaitingDecision = ['pending', 'needs_information'].includes(verification.status);
+    return <section className="member-verification"><header><div><small>Alumni verification</small><h3>Graduation evidence</h3></div><b className={`verification-state ${verification.status}`}>{verification.status.replace('_', ' ')}</b></header><div className="verification-facts"><span><small>Graduation name</small><strong>{verification.graduation_name}</strong></span><span><small>Program</small><strong>{verification.program}</strong></span><span><small>Graduation year</small><strong>{verification.graduation_year}</strong></span></div><button className="verification-document-button" onClick={openVerificationDocument}>📄 <span><strong>{verification.document_filename}</strong><small>Open secure document · link expires in 60 seconds</small></span></button><label>Reviewer notes<textarea value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="Add a note for the alumnus…" /></label>{awaitingDecision ? <footer><button disabled={saving} onClick={() => decideVerification('rejected')}>Reject</button><button disabled={saving} onClick={() => decideVerification('needs_information')}>Request information</button><button className="approve" disabled={saving} onClick={() => decideVerification('verified')}>Approve & verify</button></footer> : <p className="verification-reviewed">Decision recorded{verification.reviewed_at ? ` on ${new Date(verification.reviewed_at).toLocaleDateString()}` : ''}.</p>}</section>;
+  }
+
   const handleExportCSV = () => {
     const headers = [
       'Name',
@@ -157,14 +235,15 @@ export default function Members() {
       )
       .join('\n');
 
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
 
     link.href = url;
-    link.download = 'members.csv';
+    link.download = `nddu-members-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
     link.click();
-
+    link.remove();
     window.URL.revokeObjectURL(url);
   };
 
@@ -207,8 +286,8 @@ export default function Members() {
             ⬇ Export CSV
           </button>
 
-          <button className="btn-primary">
-            + Add New User
+          <button className="btn-primary" onClick={openAdd}>
+            + Add member
           </button>
         </div>
       </div>
@@ -256,6 +335,11 @@ export default function Members() {
         </div>
       </div>
 
+      <div className="members-results-summary">
+        <strong>{filteredUsers.length} {filteredUsers.length === 1 ? 'member' : 'members'}</strong>
+        <span>{searchQuery || roleFilter !== 'All Roles' || statusFilter !== 'All Statuses' ? 'Matching the selected filters' : 'All registered accounts'}</span>
+      </div>
+
       <div className="members-table">
         {loadError && (
           <p className="members-error">
@@ -279,7 +363,7 @@ export default function Members() {
           </div>
 
           <div className="col-joined">
-            JOINED
+            Joined
           </div>
 
           <div className="col-status">
@@ -287,7 +371,7 @@ export default function Members() {
           </div>
 
           <div className="col-actions">
-            ACTIONS
+            Actions
           </div>
         </div>
 
@@ -325,21 +409,15 @@ export default function Members() {
             </div>
 
             <div className="col-role">
-              <span
-                className="role-badge"
-                style={{
-                  backgroundColor: getRoleColor(user.role),
-                }}
-              >
-                {user.role}
-              </span>
+              <div className="role-badges">{(user.roles || [user.role]).map((role) => <span key={role} className="role-badge" style={{ backgroundColor: getRoleColor(role) }}>{role}</span>)}</div>
             </div>
 
-            <div className="col-joined">
-              {user.joined}
+            <div className="col-joined" data-label="Joined">
+              <strong>{formatJoined(user.joined).date}</strong>
+              <span>{formatJoined(user.joined).time}</span>
             </div>
 
-            <div className="col-status">
+            <div className="col-status" data-label="Account status">
               <span
                 className="status-badge"
                 style={{
@@ -370,6 +448,7 @@ export default function Members() {
 
               <button
                 className="action-btn"
+                onClick={() => openEdit(user)}
                 aria-label={`Edit ${user.name}`}
                 title="Edit member details"
               >
@@ -378,6 +457,7 @@ export default function Members() {
 
               <button
                 className="action-btn"
+                onClick={() => openView(user)}
                 aria-label={`View ${user.name}`}
                 title="View member profile"
               >
@@ -385,11 +465,12 @@ export default function Members() {
               </button>
 
               <button
-                className="action-btn"
+                className={`action-btn ${user.locked ? 'unlock-btn' : 'lock-btn'}`}
+                onClick={() => toggleLock(user)}
                 aria-label={`Lock ${user.name}`}
                 title="Temporarily lock account"
               >
-                Lock
+                {user.locked ? 'Unlock' : 'Lock'}
               </button>
             </div>
           </div>
@@ -482,6 +563,13 @@ export default function Members() {
           </div>
         </div>
       </div>
+
+      {dialog && <div className="member-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}><section className="member-modal" role="dialog" aria-modal="true" aria-label={`${dialog} member`}>
+        <header><div><small>Member directory</small><h2>{dialog === 'add' ? 'Add a member' : dialog === 'edit' ? 'Edit member' : 'Member profile'}</h2></div><button onClick={() => setDialog(null)} aria-label="Close">×</button></header>
+        {actionError && <p className="member-dialog-error" role="alert">{actionError}</p>}
+        {dialog === 'view' ? (dialogMember ? <div className="member-profile-view"><div className="member-profile-identity"><div className="user-avatar">{getInitials(`${dialogMember.first_name || ''} ${dialogMember.last_name || ''}`)}</div><span><strong>{dialogMember.first_name} {dialogMember.last_name}</strong><small>{dialogMember.email}</small></span></div><dl><div><dt>Role</dt><dd>{dialogMember.role}</dd></div><div><dt>Status</dt><dd>{dialogMember.status}</dd></div><div><dt>Email</dt><dd>{dialogMember.email_confirmed ? 'Confirmed' : 'Not confirmed'}</dd></div><div><dt>Access</dt><dd>{dialogMember.locked ? 'Locked' : 'Active'}</dd></div><div><dt>Joined</dt><dd>{formatJoined(dialogMember.created_at).date}</dd></div><div><dt>Last sign in</dt><dd>{dialogMember.last_sign_in_at ? new Date(dialogMember.last_sign_in_at).toLocaleString() : 'Never'}</dd></div></dl><h3>Education</h3>{dialogMember.education?.length ? dialogMember.education.map((item) => <p className="member-education" key={item.id}><strong>{item.course || item.degree || 'Education record'}</strong><span>{item.department || ''}{item.graduation_year ? ` · Class of ${item.graduation_year}` : ''}</span></p>) : <p className="member-modal-empty">No education records added.</p>}</div> : <p className="member-modal-empty">Loading member…</p>) : <form className="member-form" onSubmit={saveMember}><div className="member-form-grid"><label>First name<input required value={memberForm.first_name} onChange={(e) => setMemberForm({...memberForm,first_name:e.target.value})}/></label><label>Last name<input required value={memberForm.last_name} onChange={(e) => setMemberForm({...memberForm,last_name:e.target.value})}/></label></div><label>Email address<input required type="email" value={memberForm.email} onChange={(e) => setMemberForm({...memberForm,email:e.target.value})}/></label>{dialog === 'add' && <label>Temporary password<input required minLength="8" type="password" value={memberForm.password} onChange={(e) => setMemberForm({...memberForm,password:e.target.value})}/><small>At least 8 characters. Share it securely with the member.</small></label>}<div className="member-form-grid"><label>Role<select value={memberForm.role} onChange={(e) => setMemberForm({...memberForm,role:e.target.value})}>{['alumni','employer','staff','admin'].map(item=><option key={item}>{item}</option>)}</select></label><label>Account status<select value={memberForm.status} onChange={(e) => setMemberForm({...memberForm,status:e.target.value})}>{['pending','verified','suspended'].map(item=><option key={item}>{item}</option>)}</select></label></div>{dialog === 'add' && <label className="member-check"><input type="checkbox" checked={memberForm.email_confirmed} onChange={(e) => setMemberForm({...memberForm,email_confirmed:e.target.checked})}/> Mark email as confirmed</label>}<footer><button type="button" onClick={() => setDialog(null)}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : dialog === 'add' ? 'Create member' : 'Save changes'}</button></footer></form>}
+        {dialog === 'view' && dialogMember && verificationPanel()}
+      </section></div>}
     </div>
   );
 }
