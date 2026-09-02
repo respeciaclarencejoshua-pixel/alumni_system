@@ -92,12 +92,12 @@ export default function Feed({ user, profile }) {
     setMessage('');
     try {
       const enriched = await withTimeout(
-        supabase.from('feed_posts').select('*, feed_reactions(user_id, reaction), feed_comments(id, user_id, author_name, content, created_at), feed_saved_posts(user_id)').order('created_at', { ascending: false })
+        supabase.from('feed_posts').select('*, feed_reactions(user_id, reaction), feed_comments(id, user_id, author_name, content, created_at), feed_saved_posts(user_id)').eq('moderation_status','published').is('deleted_at',null).order('created_at', { ascending: false })
       );
       if (!enriched.error) {
         setPosts((enriched.data || []).map(normalizePost));
       } else {
-        const basic = await withTimeout(supabase.from('feed_posts').select('*').order('created_at', { ascending: false }));
+        const basic = await withTimeout(supabase.from('feed_posts').select('*').eq('moderation_status','published').is('deleted_at',null).order('created_at', { ascending: false }));
         if (basic.error) throw basic.error;
         setPosts((basic.data || []).map(normalizePost));
       }
@@ -169,6 +169,7 @@ export default function Feed({ user, profile }) {
 
   async function react(post, reaction) {
     if (!user?.id) return setMessage('Please sign in to react to a post.');
+    if (post.reactions_disabled) return setMessage('Reactions have been disabled by a moderator.');
     setBusyPost(post.id);
     const existing = post.feed_reactions.find((item) => item.user_id === user.id);
     const query = existing?.reaction === reaction
@@ -197,6 +198,7 @@ export default function Feed({ user, profile }) {
   async function addComment(post) {
     const draft = commentDrafts[post.id]?.trim();
     if (!user?.id) return setMessage('Please sign in to comment.');
+    if (post.comments_locked) return setMessage('Comments have been locked by a moderator.');
     if (!draft) return;
     setBusyPost(post.id);
     const { data, error } = await supabase.from('feed_comments').insert({ post_id: post.id, user_id: user.id, author_name: displayName, content: draft }).select().single();
@@ -206,6 +208,17 @@ export default function Feed({ user, profile }) {
       setCommentDrafts((current) => ({ ...current, [post.id]: '' }));
     }
     setBusyPost('');
+  }
+
+  async function reportPost(post) {
+    const reason = window.prompt('Report reason: spam, harassment, inappropriate, misinformation, privacy, copyright, scam, or other');
+    if (!reason) return;
+    const normalized = reason.trim().toLowerCase().replaceAll(' ', '_');
+    const allowed = ['spam','harassment','inappropriate','misinformation','privacy','copyright','scam','other'];
+    if (!allowed.includes(normalized)) return setMessage('Choose one of the listed report reasons.');
+    const details = window.prompt('Briefly explain the concern (optional):') || '';
+    const { error } = await supabase.from('content_reports').insert({ reporter_id:user.id,target_type:'feed_post',target_id:post.id,reason:normalized,details:details.trim()||null });
+    setMessage(error ? error.message : 'Report submitted privately for administrator review.');
   }
 
   return (
@@ -274,15 +287,15 @@ export default function Feed({ user, profile }) {
               </div>
               <div className="post-actions">
                 <div className="reaction-menu-wrap">
-                  <button className={currentReaction ? 'active' : ''} aria-expanded={openReactionPost === post.id} onClick={() => setOpenReactionPost((current) => current === post.id ? '' : post.id)}><Icon name={currentReactionChoice?.icon || 'like'} />{currentReactionChoice?.label || 'React'}</button>
+                  <button disabled={post.reactions_disabled} title={post.reactions_disabled?'Reactions are disabled on this post':''} className={currentReaction ? 'active' : ''} aria-expanded={openReactionPost === post.id} onClick={() => setOpenReactionPost((current) => current === post.id ? '' : post.id)}><Icon name={currentReactionChoice?.icon || 'like'} />{post.reactions_disabled?'Reactions off':currentReactionChoice?.label || 'React'}</button>
                   <div className={`reaction-menu ${openReactionPost === post.id ? 'open' : ''}`} aria-label="Choose a reaction">{reactionChoices.map((choice) => <button key={choice.id} type="button" title={choice.label} aria-label={choice.label} disabled={busyPost === post.id} className={currentReaction === choice.id ? 'active' : ''} aria-pressed={currentReaction === choice.id} onClick={() => react(post, choice.id)}><span className="reaction-emoji" aria-hidden="true">{choice.emoji}</span></button>)}</div>
                 </div>
-                <button className={commentsOpen ? 'active' : ''} onClick={() => setOpenComments((current) => current.includes(post.id) ? current.filter((id) => id !== post.id) : [...current, post.id])}><Icon name="comment" />Comment</button>
-                <button className={saved ? 'active' : ''} disabled={busyPost === post.id} onClick={() => toggleSave(post)}><Icon name="bookmark" />{saved ? 'Saved' : 'Save'}</button>
+                <button className={commentsOpen ? 'active' : ''} onClick={() => setOpenComments((current) => current.includes(post.id) ? current.filter((id) => id !== post.id) : [...current, post.id])}><Icon name="comment" />{post.comments_locked?'Comments locked':'Comment'}</button>
+                <button className={saved ? 'active' : ''} disabled={busyPost === post.id} onClick={() => toggleSave(post)}><Icon name="bookmark" />{saved ? 'Saved' : 'Save'}</button><button onClick={()=>reportPost(post)} aria-label={`Report post by ${post.author_name}`}>Report</button>
               </div>
               {commentsOpen && <section className="comments-section" aria-label={`Comments on ${post.author_name}'s post`}>
                 {post.feed_comments.length ? <ul>{post.feed_comments.map((comment) => <li key={comment.id}><strong>{comment.author_name}</strong><p>{comment.content}</p><time dateTime={comment.created_at}>{formatDate(comment.created_at)}</time></li>)}</ul> : <p className="no-comments">No comments yet. Start the conversation.</p>}
-                <div className="comment-composer"><label htmlFor={`comment-${post.id}`}>Write a comment</label><div><input id={`comment-${post.id}`} value={commentDrafts[post.id] || ''} maxLength="1000" placeholder="Write a kind and helpful comment" onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') addComment(post); }} /><button aria-label="Post comment" disabled={busyPost === post.id || !commentDrafts[post.id]?.trim()} onClick={() => addComment(post)}><Icon name="send" /></button></div></div>
+                {post.comments_locked?<p className="no-comments">A moderator has locked new comments on this post.</p>:<div className="comment-composer"><label htmlFor={`comment-${post.id}`}>Write a comment</label><div><input id={`comment-${post.id}`} value={commentDrafts[post.id] || ''} maxLength="1000" placeholder="Write a kind and helpful comment" onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') addComment(post); }} /><button aria-label="Post comment" disabled={busyPost === post.id || !commentDrafts[post.id]?.trim()} onClick={() => addComment(post)}><Icon name="send" /></button></div></div>}
               </section>}
             </article>;
           })}

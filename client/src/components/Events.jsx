@@ -56,8 +56,9 @@ function EventVisual({ event, compact = false }) {
 function EventLocationMap({ event }) {
   const lat = Number(event.latitude), lng = Number(event.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const query = encodeURIComponent(`${lat},${lng}`);
-  return <section className="public-event-map" aria-label="Event map"><iframe title={`Map for ${event.title}`} src={`https://www.google.com/maps?q=${query}&z=16&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade"/><a href={`https://www.google.com/maps/dir/?api=1&destination=${query}`} target="_blank" rel="noreferrer">Open directions in Google Maps ↗</a></section>;
+  const delta = .012;
+  const bbox = `${lng-delta},${lat-delta},${lng+delta},${lat+delta}`;
+  return <section className="public-event-map" aria-label="Event map"><iframe title={`Map for ${event.title}`} src={`https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${lat}%2C${lng}`} loading="lazy"/><a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`} target="_blank" rel="noreferrer">View location in OpenStreetMap ↗</a></section>;
 }
 
 export default function EventsPage() {
@@ -139,21 +140,21 @@ export default function EventsPage() {
   async function markInterested(event) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return setEventMessage('Please sign in before marking interest.');
-    const { error } = await supabase.from('event_interests').insert({ event_id: event.id, user_id: session.user.id });
+    const { error } = await supabase.from('event_registrations').upsert({ event_id: event.id, user_id: session.user.id, status: 'registered' }, { onConflict: 'event_id,user_id' });
     if (error && error.code !== '23505') return setEventMessage(error.message);
     setInterestedIds((current) => current.includes(event.id) ? current : [...current, event.id]);
     setEvents((current) => current.map((item) => item.id === event.id && !interestedIds.includes(event.id) ? { ...item, interest_count: (item.interest_count || 0) + 1 } : item));
-    setEventMessage('Your interest has been recorded.');
+    setEventMessage('You are registered for this event.');
   }
 
   async function removeInterest(event) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return setEventMessage('Please sign in to manage your interests.');
-    const { error } = await supabase.from('event_interests').delete().eq('event_id', event.id).eq('user_id', session.user.id);
+    const { error } = await supabase.from('event_registrations').update({ status: 'cancelled' }).eq('event_id', event.id).eq('user_id', session.user.id);
     if (error) return setEventMessage(error.message);
     setInterestedIds((current) => current.filter((id) => id !== event.id));
     setEvents((current) => current.map((item) => item.id === event.id && interestedIds.includes(event.id) ? { ...item, interest_count: Math.max(0, (item.interest_count || 0) - 1) } : item));
-    setEventMessage('Your interest has been removed.');
+    setEventMessage('Your event registration has been cancelled.');
   }
 
   return (
@@ -232,7 +233,7 @@ export default function EventsPage() {
                     <p className="event-place-line">{featuredEvent.location}</p>
                     <p className="event-description">{featuredEvent.description}</p>
                     <div className="cta-row">
-                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? 'Remove interest' : 'I\'m interested'}</button>
+                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? 'Cancel registration' : 'Register for event'}</button>
                       <button type="button" className="secondary-action" onClick={() => setSelectedEvent(featuredEvent)}>View details</button>
                     </div>
                   </div>
@@ -285,7 +286,7 @@ export default function EventsPage() {
           </main>
         </div>
         {eventMessage && <p className="event-feedback">{eventMessage}</p>}
-        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} alumni interested</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? 'Remove interest' : 'I\'m interested'}</button></div></section></div>}
+        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} registered alumni</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? 'Cancel registration' : 'Register for event'}</button></div></section></div>}
       </div>
     </div>
   );

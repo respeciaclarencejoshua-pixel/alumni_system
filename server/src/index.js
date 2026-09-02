@@ -144,7 +144,7 @@ app.get('/api/events', async (req, res, next) => {
       throw error;
     }
 
-    // Try to get interest counts, but don't fail if the table doesn't exist
+    // Registration totals are public; attendee identities remain admin-only.
     let interestCounts = {};
     const resourceIds = (data || []).map((resource) => resource.id);
     
@@ -152,9 +152,10 @@ app.get('/api/events', async (req, res, next) => {
       try {
         const { data: interests, error: interestsError } = await runSupabaseQuery(
           adminClient
-            .from('event_interests')
-            .select('event_id')
+            .from('event_registrations')
+            .select('event_id,status')
             .in('event_id', resourceIds)
+            .neq('status','cancelled')
         );
         
         if (!interestsError) {
@@ -164,8 +165,7 @@ app.get('/api/events', async (req, res, next) => {
           }, {});
         }
       } catch (e) {
-        // Silently ignore if event_interests table doesn't exist
-        console.warn('event_interests table not available:', e.message);
+        console.warn('event_registrations table not available:', e.message);
       }
     }
 
@@ -306,12 +306,16 @@ adminRouter.get('/me', (req, res) => {
   });
 });
 
+adminRouter.use(async(req,res,next)=>{if(req.admin.profile.role==='admin')return next();try{const{data,error}=await adminClient.from('admin_permissions').select('scopes,admin_role').eq('profile_id',req.admin.id).maybeSingle();if(error)throw error;const path=req.path;const needed=path.startsWith('/members')||path.startsWith('/users')?'members':path.startsWith('/verifications')?'verification':path.startsWith('/opportunities')||path.startsWith('/opportunity-analytics')?'opportunities':path.startsWith('/events')||path.startsWith('/resources/events')?'events':path.startsWith('/moderation')||path.startsWith('/community-content')?'moderation':path.startsWith('/gallery-submissions')?'gallery':path.startsWith('/analytics')?'analytics':path.startsWith('/settings')||path.startsWith('/permissions')?'settings':'dashboard';if(!(data?.scopes||['analytics']).includes(needed))return res.status(403).json({error:`Your ${data?.admin_role||'staff'} role does not include ${needed} access.`});req.admin.permission=data;next();}catch(error){next(error);}});
+
 app.get('/api/gallery', async (req, res, next) => {
   if (!adminClient) return res.status(503).json({ error: 'Gallery data is not configured.' });
   try {
-    const { data, error } = await runSupabaseQuery(adminClient.from('gallery_submissions').select('id, author_name, title, description, category, photo_date, batch_year, people_names, image_path, featured, created_at').eq('status', 'approved').order('featured', { ascending: false }).order('created_at', { ascending: false }));
+    const { data, error } = await runSupabaseQuery(adminClient.from('gallery_submissions').select('id,author_name,title,description,category,photo_date,batch_year,batch_name,people_names,image_path,featured,featured_rank,featured_starts_at,featured_ends_at,created_at').eq('status', 'approved').order('featured', { ascending: false }).order('featured_rank', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }));
     if (error) throw error;
-    const photos = await Promise.all((data || []).map(async (photo) => {
+    const now = Date.now();
+    const eligible = (data || []).map(photo => ({...photo, featured: Boolean(photo.featured && (!photo.featured_starts_at || new Date(photo.featured_starts_at).getTime() <= now) && (!photo.featured_ends_at || new Date(photo.featured_ends_at).getTime() >= now))}));
+    const photos = await Promise.all(eligible.map(async (photo) => {
       const { data: signed, error: signedError } = await adminClient.storage.from('gallery-media').createSignedUrl(photo.image_path, 3600);
       if (signedError) throw signedError;
       return { ...photo, url: signed.signedUrl };
@@ -422,11 +426,21 @@ adminRouter.get('/overview', async (req, res, next) => {
 
 adminRouter.get('/community-content', async (req, res, next) => {
   try {
-    const { data, error } = await runSupabaseQuery(
-      adminClient.from('feed_posts')
-        .select('id, user_id, author_name, author_avatar_url, content, media_path, created_at, feed_comments(count), feed_reactions(count)')
-        .order('created_at', { ascending: false }).limit(100)
-    );
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 10, 1), 50);
+    const from = (page - 1) * pageSize;
+    let query = adminClient.from('feed_posts')
+      .select('id,user_id,author_name,author_avatar_url,content,media_path,created_at,moderation_status,comments_locked,reactions_disabled,deleted_at,deletion_reason,profiles!feed_posts_user_id_fkey(status,warnings_count),feed_comments(count),feed_reactions(count)', { count: 'exact' });
+    const status = String(req.query.status || 'published');
+    if (status !== 'all') query = query.eq('moderation_status', status);
+    if (req.query.type === 'text') query = query.is('media_path', null);
+    if (req.query.type === 'photo') query = query.not('media_path', 'is', null);
+    if (req.query.author) query = query.ilike('author_name', `%${String(req.query.author).slice(0, 100)}%`);
+    if (req.query.from) query = query.gte('created_at', String(req.query.from));
+    if (req.query.to) query = query.lte('created_at', String(req.query.to));
+    const ascending = req.query.sort === 'oldest';
+    query = query.order('created_at', { ascending }).range(from, from + pageSize - 1);
+    const { data, error, count } = await runSupabaseQuery(query);
     if (error) throw error;
     const posts = await Promise.all((data || []).map(async (post) => {
       let mediaUrl = null;
@@ -436,21 +450,65 @@ adminRouter.get('/community-content', async (req, res, next) => {
       }
       return { ...post, media_url: mediaUrl, comment_count: post.feed_comments?.[0]?.count || 0, reaction_count: post.feed_reactions?.[0]?.count || 0 };
     }));
-    res.json({ posts });
+    res.json({ posts, total: count || 0, page, pageSize });
   } catch (error) { next(error); }
 });
 
-adminRouter.delete('/community-content/:postId', async (req, res, next) => {
+adminRouter.get('/community-content/:postId', async (req, res, next) => {
   try {
-    const { data: post, error: findError } = await adminClient.from('feed_posts').select('id, media_path, author_name').eq('id', req.params.postId).maybeSingle();
+    const { data: post, error: findError } = await adminClient.from('feed_posts').select('*,profiles!feed_posts_user_id_fkey(id,first_name,last_name,email,status,warnings_count,locked_until),feed_comments(*),feed_reactions(*)').eq('id', req.params.postId).maybeSingle();
     if (findError) throw findError;
     if (!post) return res.status(404).json({ error: 'Post not found.' });
-    const { error } = await adminClient.from('feed_posts').delete().eq('id', post.id);
-    if (error) throw error;
-    if (post.media_path) await adminClient.storage.from('feed-media').remove([post.media_path]);
-    await writeAuditLog({ actorId: req.admin.id, action: 'delete_community_post', targetType: 'feed_post', targetId: post.id, details: { author_name: post.author_name } });
-    res.json({ success: true });
+    const [{ data: reports, error: reportError }, { data: history, error: historyError }] = await Promise.all([
+      adminClient.from('content_reports').select('*').eq('target_type','feed_post').eq('target_id',post.id).order('created_at',{ascending:false}),
+      adminClient.from('moderation_actions').select('*').eq('target_type','feed_post').eq('target_id',post.id).order('created_at',{ascending:false}),
+    ]);
+    if (reportError) throw reportError; if (historyError) throw historyError;
+    let mediaUrl = null; if (post.media_path) mediaUrl = adminClient.storage.from('feed-media').getPublicUrl(post.media_path).data?.publicUrl || null;
+    res.json({ post: { ...post, media_url: mediaUrl }, reports: reports || [], history: history || [] });
   } catch (error) { next(error); }
+});
+
+async function moderateFeedPost({ postId, action, reason, actorId, reportId = null }) {
+  const { data: post, error: findError } = await adminClient.from('feed_posts').select('id,user_id,moderation_status,comments_locked,reactions_disabled').eq('id',postId).maybeSingle();
+  if (findError) throw findError; if (!post) throw Object.assign(new Error('Post not found.'), { status: 404 });
+  const updates = {};
+  if (action === 'keep' || action === 'restore') Object.assign(updates,{moderation_status:'published',deleted_at:null,deletion_reason:null,deleted_by:null});
+  if (action === 'hide') updates.moderation_status = 'hidden';
+  if (action === 'remove') Object.assign(updates,{moderation_status:'removed',deleted_at:new Date().toISOString(),deletion_reason:reason,deleted_by:actorId});
+  if (action === 'lock_comments') updates.comments_locked = true;
+  if (action === 'unlock_comments') updates.comments_locked = false;
+  if (action === 'disable_reactions') updates.reactions_disabled = true;
+  if (action === 'enable_reactions') updates.reactions_disabled = false;
+  if (Object.keys(updates).length) { const { error } = await adminClient.from('feed_posts').update(updates).eq('id',postId); if (error) throw error; }
+  if (action === 'warn') { const { data: profile, error } = await adminClient.from('profiles').select('warnings_count').eq('id',post.user_id).single(); if(error) throw error; const {error:updateError}=await adminClient.from('profiles').update({warnings_count:(profile.warnings_count||0)+1}).eq('id',post.user_id); if(updateError) throw updateError; }
+  if (action === 'suspend') { const {error}=await adminClient.from('profiles').update({status:'suspended',suspension_reason:reason}).eq('id',post.user_id); if(error) throw error; }
+  const { error: actionError } = await adminClient.from('moderation_actions').insert({report_id:reportId,target_type:'feed_post',target_id:postId,action,reason,actor_id:actorId,reversible_until:['hide','remove'].includes(action)?new Date(Date.now()+30*86400000).toISOString():null});
+  if (actionError) throw actionError;
+  await writeAuditLog({actorId,action:`moderation.${action}`,targetType:'feed_post',targetId:postId,details:{reason,reportId}});
+}
+
+async function moderateFeedComment({commentId,action,reason,actorId,reportId=null}){
+  const {data:comment,error}=await adminClient.from('feed_comments').select('id,user_id').eq('id',commentId).maybeSingle();if(error)throw error;if(!comment)throw Object.assign(new Error('Comment not found.'),{status:404});
+  const updates={};if(action==='keep'||action==='restore')Object.assign(updates,{moderation_status:'published',deleted_at:null,deletion_reason:null});if(action==='hide')updates.moderation_status='hidden';if(action==='remove')Object.assign(updates,{moderation_status:'removed',deleted_at:new Date().toISOString(),deletion_reason:reason});
+  if(Object.keys(updates).length){const{error:updateError}=await adminClient.from('feed_comments').update(updates).eq('id',commentId);if(updateError)throw updateError;}
+  if(action==='warn'){const{data:profile,error:profileError}=await adminClient.from('profiles').select('warnings_count').eq('id',comment.user_id).single();if(profileError)throw profileError;const{error:updateError}=await adminClient.from('profiles').update({warnings_count:(profile.warnings_count||0)+1}).eq('id',comment.user_id);if(updateError)throw updateError;}
+  if(action==='suspend'){const{error:suspendError}=await adminClient.from('profiles').update({status:'suspended',suspension_reason:reason}).eq('id',comment.user_id);if(suspendError)throw suspendError;}
+  const{error:actionError}=await adminClient.from('moderation_actions').insert({report_id:reportId,target_type:'feed_comment',target_id:commentId,action,reason,actor_id:actorId,reversible_until:['hide','remove'].includes(action)?new Date(Date.now()+30*86400000).toISOString():null});if(actionError)throw actionError;
+  await writeAuditLog({actorId,action:`moderation.${action}`,targetType:'feed_comment',targetId:commentId,details:{reason,reportId}});
+}
+
+adminRouter.patch('/community-content/:postId/moderate', async (req,res,next) => {
+  const action=String(req.body.action||''); const reason=String(req.body.reason||'').trim();
+  const allowed=['keep','hide','restore','remove','warn','lock_comments','unlock_comments','disable_reactions','enable_reactions','suspend'];
+  if(!allowed.includes(action)) return res.status(400).json({error:'Invalid moderation action.'});
+  if(!reason) return res.status(400).json({error:'A reason or internal note is required.'});
+  try { await moderateFeedPost({postId:req.params.postId,action,reason,actorId:req.admin.id}); res.json({success:true}); } catch(error){next(error);}
+});
+
+adminRouter.delete('/community-content/:postId', async (req,res,next) => {
+  const reason=String(req.body?.reason||'Removed by administrator').trim();
+  try { await moderateFeedPost({postId:req.params.postId,action:'remove',reason,actorId:req.admin.id}); res.json({success:true,recoverableUntil:new Date(Date.now()+30*86400000).toISOString()}); } catch(error){next(error);}
 });
 
 adminRouter.get('/gallery-submissions', async (req, res, next) => {
@@ -478,6 +536,17 @@ adminRouter.patch('/gallery-submissions/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+adminRouter.patch('/gallery-submissions/:id/curate', async(req,res,next)=>{
+  const updates={};
+  if(typeof req.body.featured==='boolean') updates.featured=req.body.featured;
+  if(req.body.featuredRank!==undefined) updates.featured_rank=req.body.featuredRank===''?null:Number(req.body.featuredRank);
+  if(req.body.featuredStartsAt!==undefined) updates.featured_starts_at=req.body.featuredStartsAt||null;
+  if(req.body.featuredEndsAt!==undefined) updates.featured_ends_at=req.body.featuredEndsAt||null;
+  if(req.body.status==='archived') Object.assign(updates,{status:'archived',featured:false,archived_at:new Date().toISOString()});
+  if(!Object.keys(updates).length) return res.status(400).json({error:'No curation changes supplied.'});
+  try { const {data,error}=await adminClient.from('gallery_submissions').update(updates).eq('id',req.params.id).select('*').single(); if(error)throw error; const action=updates.status==='archived'?'archive':updates.featured?'feature':'unfeature'; await adminClient.from('moderation_actions').insert({target_type:'gallery_submission',target_id:data.id,action,reason:String(req.body.reason||'Gallery curation updated'),actor_id:req.admin.id}); await writeAuditLog({actorId:req.admin.id,action:`gallery.${action}`,targetType:'gallery_submission',targetId:data.id,details:updates}); res.json({submission:data}); } catch(error){next(error);}
+});
+
 /* =========================================================
    MEMBERS
 ========================================================= */
@@ -503,7 +572,7 @@ adminRouter.get(
     let query = adminClient
       .from('profiles')
       .select(
-        'id, first_name, last_name, email, role, status, created_at',
+        'id, first_name, last_name, email, role, status, created_at, locked_until, suspension_reason, suspension_expires_at, deactivated_at, account_source, last_active_at, warnings_count',
         {
           count: 'exact',
         }
@@ -561,6 +630,13 @@ adminRouter.get(
         map[item.profile_id].push(item.role.toUpperCase());
         return map;
       }, {});
+      const [{data:educationRows,error:educationError},{data:employerRows,error:employerError}]=data.length?await Promise.all([
+        adminClient.from('education').select('profile_id,department,course,graduation_year,batch_name').in('profile_id',data.map(x=>x.id)),
+        adminClient.from('employer_profiles').select('profile_id,organization,job_title').in('profile_id',data.map(x=>x.id)),
+      ]):[{data:[],error:null},{data:[],error:null}];
+      if(educationError||employerError)throw educationError||employerError;
+      const educationByProfile=(educationRows||[]).reduce((m,x)=>{(m[x.profile_id]??=[]).push(x);return m;},{});
+      const employerByProfile=Object.fromEntries((employerRows||[]).map(x=>[x.profile_id,x]));
 
       /*
        * Get Supabase Auth users so we can determine
@@ -629,6 +705,15 @@ adminRouter.get(
               authUser?.email_confirmed_at
             ),
           locked: Boolean(authUser?.banned_until && new Date(authUser.banned_until) > new Date()),
+          lastSignInAt: authUser?.last_sign_in_at || null,
+          department: educationByProfile[profile.id]?.[0]?.department || '',
+          course: educationByProfile[profile.id]?.[0]?.course || '',
+          graduationYear: educationByProfile[profile.id]?.[0]?.graduation_year || '',
+          batchName: educationByProfile[profile.id]?.[0]?.batch_name || '',
+          organization: employerByProfile[profile.id]?.organization || '',
+          suspensionExpiresAt: profile.suspension_expires_at,
+          deactivated: Boolean(profile.deactivated_at),
+          warnings: profile.warnings_count || 0,
         };
       });
 
@@ -759,6 +844,13 @@ adminRouter.patch(
           'A valid member status is required.',
       });
     }
+    if (req.params.id === req.admin.id && status === 'suspended') return res.status(400).json({ error: 'You cannot suspend your own administrator account.' });
+    const role = String(req.body.role || '').toLowerCase();
+    if (role && !['alumni','employer','staff','admin'].includes(role)) return res.status(400).json({ error: 'Choose a valid member role.' });
+    const updates = { status };
+    for (const field of ['first_name','last_name','email']) if (typeof req.body[field] === 'string') updates[field] = req.body[field].trim();
+    if (role) updates.role = role;
+    updates.suspension_reason = status === 'suspended' ? String(req.body.suspension_reason || '').trim() || 'Administrative restriction' : null;
 
     try {
       const {
@@ -766,12 +858,10 @@ adminRouter.patch(
         error,
       } = await adminClient
         .from('profiles')
-        .update({
-          status,
-        })
+        .update(updates)
         .eq('id', req.params.id)
         .select(
-          'id, email, status'
+          'id, email, role, status, suspension_reason'
         )
         .single();
 
@@ -786,7 +876,7 @@ adminRouter.patch(
         targetType: 'profile',
         targetId: data.id,
         details: {
-          status,
+          status, role: data.role, suspensionReason: data.suspension_reason,
         },
       });
 
@@ -813,9 +903,11 @@ adminRouter.get(
     if (
       ![
         'pending',
+        'under_review',
         'needs_information',
         'verified',
         'rejected',
+        'expired',
         'all',
       ].includes(status)
     ) {
@@ -838,7 +930,7 @@ adminRouter.get(
             document_path,
             document_filename,
             status,
-            reviewer_note,
+            reviewer_note, assigned_to, priority, expires_at, retention_delete_at, document_deleted_at, scan_status, file_size_bytes, mime_type, reviewed_at,
             created_at,
             profiles!alumni_verifications_user_id_fkey(
               first_name,
@@ -848,7 +940,7 @@ adminRouter.get(
           `
         )
         .order('created_at', {
-          ascending: false,
+          ascending: req.query.sort === 'oldest',
         });
 
       if (status !== 'all') {
@@ -857,6 +949,7 @@ adminRouter.get(
           status
         );
       }
+      if(req.query.search){const term=String(req.query.search).replace(/[,()%]/g,'');query=/^\d{4}$/.test(term)?query.eq('graduation_year',Number(term)):query.or(`graduation_name.ilike.%${term}%,program.ilike.%${term}%`);}
 
       const {
         data,
@@ -868,7 +961,7 @@ adminRouter.get(
       }
 
       res.json({
-        verifications: data,
+        verifications: (data||[]).map(x=>({...x,submission_age_days:Math.floor((Date.now()-new Date(x.created_at))/86400000)})),
       });
     } catch (error) {
       next(error);
@@ -896,6 +989,7 @@ adminRouter.patch(
 
     if (
       ![
+        'under_review',
         'needs_information',
         'verified',
         'rejected',
@@ -907,6 +1001,8 @@ adminRouter.patch(
       });
     }
 
+    if(['needs_information','rejected'].includes(status)&&!reviewerNote)return res.status(400).json({error:'A decision reason is required.'});
+    if(status==='verified'&&!['name','program','year','readable','authentic'].every(key=>req.body.checks?.[key]))return res.status(400).json({error:'Complete every approval safeguard before verifying.'});
     try {
       const {
         data: verification,
@@ -920,6 +1016,8 @@ adminRouter.patch(
           reviewed_by: req.admin.id,
           reviewed_at:
             new Date().toISOString(),
+          assigned_to:req.admin.id,
+          retention_delete_at:status==='verified'?new Date(Date.now()+(Number(req.body.retentionDays)||30)*86400000).toISOString():null,
         })
         .eq('id', req.params.id)
         .select(
@@ -930,6 +1028,9 @@ adminRouter.patch(
       if (verificationError) {
         throw verificationError;
       }
+
+      const messages={under_review:['Verification under review','An alumni officer has started reviewing your submission.'],needs_information:['More information required',reviewerNote],verified:['Alumni verification approved','Your alumni account has been verified.'],rejected:['Verification was not approved',reviewerNote]};
+      if(messages[status])await adminClient.from('account_notifications').insert({recipient_id:verification.user_id,kind:`verification_${status}`,subject:messages[status][0],message:messages[status][1]});
 
       /*
        * If alumni verification is approved,
@@ -961,7 +1062,7 @@ adminRouter.patch(
           'alumni_verification',
         targetId: verification.id,
         details: {
-          reviewerNote,
+          reviewerNote,checks:req.body.checks||null,
         },
       });
 
@@ -1013,6 +1114,7 @@ adminRouter.get(
       if (signedUrlError) {
         throw signedUrlError;
       }
+      await adminClient.from('verification_document_accesses').insert({verification_id:req.params.id,accessed_by:req.admin.id,action:'view'});
 
       res.json({
         url: data.signedUrl,
@@ -1061,6 +1163,11 @@ adminRouter.put(
       'contact_email',
       'allow_open_signups',
       'verify_domain',
+      'session_timeout_minutes',
+      'require_admin_mfa',
+      'content_retention_days',
+      'maintenance_mode',
+      'approved_email_domains','captcha_provider','captcha_enabled','upload_max_mb','allowed_file_types','verification_document_retention_days','moderation_reasons','rate_limit_per_minute','email_templates','backup_status','storage_usage_bytes',
     ];
 
     const updates = Object.fromEntries(
@@ -1135,12 +1242,19 @@ adminRouter.get('/opportunities', async (req, res, next) => {
 
 adminRouter.patch('/opportunities/:id', async (req, res, next) => {
   const body = req.body || {};
-  const editableFields = ['title', 'company_name', 'location', 'category', 'description', 'requirements'];
+  const editableFields = ['title','company_name','location','category','description','requirements','employment_type','work_arrangement','salary_range','reviewer_note','required_experience','required_course','required_department','contact_person','contact_email','application_url','industry'];
   const updates = Object.fromEntries(editableFields.filter((field) => typeof body[field] === 'string').map((field) => [field, body[field].trim()]));
   if (body.status !== undefined) {
-    if (!['active', 'archived'].includes(body.status)) return res.status(400).json({ error: 'Status must be active or archived.' });
+    if (!['draft','submitted','under_review','needs_changes','approved','published','active','paused','expired','archived','rejected'].includes(body.status)) return res.status(400).json({ error: 'Choose a valid opportunity status.' });
+    if (['needs_changes','rejected'].includes(body.status) && !String(body.reviewer_note||'').trim()) return res.status(400).json({ error: 'A reviewer note is required for this decision.' });
     updates.status = body.status;
+    updates.reviewed_by = req.admin.id;
+    updates.reviewed_at = new Date().toISOString();
+    if(['published','active'].includes(body.status))updates.published_at=new Date().toISOString();
   }
+  if (body.application_deadline !== undefined) updates.application_deadline = body.application_deadline || null;
+  if (body.featured !== undefined) updates.featured = Boolean(body.featured);
+  if(body.openings!==undefined)updates.openings=body.openings?Number(body.openings):null;
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide at least one valid opportunity field.' });
   try {
     const { data, error } = await adminClient
@@ -1415,6 +1529,102 @@ adminRouter.delete(
    AUDIT LOGS
 ========================================================= */
 
+adminRouter.get('/attention', async (req, res, next) => {
+  const count = async (table, configure) => {
+    const { count: total, error } = await runSupabaseQuery(configure(adminClient.from(table).select('*',{count:'exact',head:true})));
+    if (error) throw error; return total || 0;
+  };
+  try {
+    const now = new Date().toISOString();
+    const [verifications,gallery,reports,opportunities,locked,eventRows] = await Promise.all([
+      count('alumni_verifications',q=>q.in('status',['pending','needs_information'])),
+      count('gallery_submissions',q=>q.in('status',['pending','needs_information'])),
+      count('content_reports',q=>q.in('status',['open','under_review'])),
+      count('opportunities',q=>q.in('status',['submitted','under_review','needs_changes'])),
+      count('profiles',q=>q.or(`status.eq.suspended,locked_until.gt.${now}`)),
+      runSupabaseQuery(adminClient.from('admin_resources').select('id,payload').eq('resource_type','events')),
+    ]);
+    if(eventRows.error)throw eventRows.error;
+    const incompleteEvents=(eventRows.data||[]).filter(x=>!x.payload?.location||!x.payload?.image_path).length;
+    res.json({items:[
+      {key:'verifications',label:'Alumni verifications',count:verifications,page:'Alumni Verification',tone:'warning'},
+      {key:'gallery',label:'Gallery submissions',count:gallery,page:'Social & News',tone:'warning'},
+      {key:'reports',label:'Content reports',count:reports,page:'Social & News',tone:'danger'},
+      {key:'opportunities',label:'Opportunity reviews',count:opportunities,page:'Opportunities & Events',tone:'warning'},
+      {key:'accounts',label:'Restricted accounts',count:locked,page:'Members',tone:'neutral'},
+      {key:'events',label:'Events missing details',count:incompleteEvents,page:'Opportunities & Events',tone:'warning'},
+    ]});
+  } catch(error){ next(error); }
+});
+
+adminRouter.post('/opportunities/:id/duplicate',async(req,res,next)=>{try{const{data:source,error}=await adminClient.from('opportunities').select('*').eq('id',req.params.id).single();if(error)throw error;delete source.id;delete source.created_at;Object.assign(source,{title:`${source.title} (Copy)`,status:'draft',reviewed_by:null,reviewed_at:null,published_at:null,featured:false});const{data,error:insertError}=await adminClient.from('opportunities').insert(source).select('*').single();if(insertError)throw insertError;await writeAuditLog({actorId:req.admin.id,action:'opportunity.duplicated',targetType:'opportunity',targetId:data.id,details:{sourceId:req.params.id}});res.status(201).json({opportunity:data});}catch(error){next(error);}});
+adminRouter.post('/opportunities/:id/report-employer',async(req,res,next)=>{const reason=String(req.body.reason||'').trim();if(!reason)return res.status(400).json({error:'A fraud concern is required.'});try{const{data,error}=await adminClient.from('opportunities').update({status:'paused',fraud_reported_at:new Date().toISOString(),reviewer_note:reason}).eq('id',req.params.id).select('id,user_id').single();if(error)throw error;await adminClient.from('content_reports').insert({reporter_id:req.admin.id,target_type:'member',target_id:data.user_id,reason:'scam',details:reason});await writeAuditLog({actorId:req.admin.id,action:'opportunity.employer_reported',targetType:'opportunity',targetId:data.id,details:{reason}});res.json({success:true});}catch(error){next(error);}});
+adminRouter.get('/opportunity-analytics',async(req,res,next)=>{try{const[{data:items,error},{data:responses,error:responseError}]=await Promise.all([adminClient.from('opportunities').select('id,industry,required_course,view_count,user_id,status'),adminClient.from('opportunity_applications').select('opportunity_id,response')]);if(error||responseError)throw error||responseError;const byId=(responses||[]).reduce((m,x)=>{const row=m[x.opportunity_id]??={interested:0,applied:0};row[x.response]=(row[x.response]||0)+1;return m;},{});const totalViews=(items||[]).reduce((n,x)=>n+(x.view_count||0),0),applications=(responses||[]).filter(x=>x.response==='applied').length;res.json({summary:{views:totalViews,interested:(responses||[]).filter(x=>x.response==='interested').length,applications,conversion:totalViews?Math.round(applications/totalViews*1000)/10:0},industries:(items||[]).reduce((m,x)=>({...m,[x.industry||'Unspecified']:(m[x.industry||'Unspecified']||0)+1}),{}),courses:(items||[]).reduce((m,x)=>({...m,[x.required_course||'Any course']:(m[x.required_course||'Any course']||0)+1}),{}),performance:(items||[]).map(x=>({id:x.id,views:x.view_count||0,...(byId[x.id]||{interested:0,applied:0})}))});}catch(error){next(error);}});
+
+adminRouter.get('/system-health',async(req,res,next)=>{try{const configured=Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY);const checks=[{key:'database',label:'Database',status:configured?'operational':'configuration_required'},{key:'email',label:'Authentication email',status:configured?'configured':'configuration_required'},{key:'storage',label:'File storage',status:configured?'configured':'configuration_required'},{key:'giphy',label:'GIF provider',status:process.env.GIPHY_API_KEY?'configured':'optional_not_configured'}];const{data,error}=await adminClient.from('system_incidents').select('id,service,summary,created_at').is('resolved_at',null).order('created_at',{ascending:false}).limit(8);if(error)throw error;res.json({checkedAt:new Date().toISOString(),checks,incidents:[...checks.filter(x=>x.status==='configuration_required'),...(data||[])]});}catch(error){next(error);}});
+
+adminRouter.get('/analytics', async (req,res,next) => {
+  try {
+    const sinceDays = Math.min(Math.max(Number(req.query.days)||30,7),365);
+    const since = new Date(Date.now()-sinceDays*86400000).toISOString();
+    const previousSince = new Date(Date.now()-sinceDays*2*86400000).toISOString();
+    const [profiles,verifications,posts,reports,registrations,applications,comments,gallery,education] = await Promise.all([
+      runSupabaseQuery(adminClient.from('profiles').select('id,role,status,created_at').gte('created_at',previousSince)),
+      runSupabaseQuery(adminClient.from('alumni_verifications').select('status,created_at,reviewed_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('feed_posts').select('id,user_id,created_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('content_reports').select('status,created_at,resolved_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('event_registrations').select('status,created_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('opportunity_applications').select('response,created_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('feed_comments').select('id,user_id,created_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('gallery_submissions').select('status,created_at,reviewed_at').gte('created_at',since)),
+      runSupabaseQuery(adminClient.from('education').select('profile_id,department,course,graduation_year,batch_name')),
+    ]);
+    const failed=[profiles,verifications,posts,reports,registrations,applications,comments,gallery,education].find(x=>x.error); if(failed) throw failed.error;
+    const averageHours=(rows,end)=>{const done=rows.filter(x=>x[end]);return done.length?Math.round(done.reduce((n,x)=>n+(new Date(x[end])-new Date(x.created_at))/3600000,0)/done.length*10)/10:0;};
+    const group=(rows,key)=>rows.reduce((a,x)=>{const k=x[key]||'unknown';a[k]=(a[k]||0)+1;return a;},{});
+    const currentProfiles=profiles.data.filter(x=>x.created_at>=since);const previousProfiles=profiles.data.filter(x=>x.created_at<since);const trend=(current,previous)=>previous?Math.round((current-previous)/previous*1000)/10:current?100:0;const timeline=Array.from({length:Math.min(sinceDays,30)},(_,index)=>{const day=new Date(Date.now()-(Math.min(sinceDays,30)-1-index)*86400000).toISOString().slice(0,10);return{day,registrations:currentProfiles.filter(x=>x.created_at.slice(0,10)===day).length,posts:posts.data.filter(x=>x.created_at.slice(0,10)===day).length};});
+    const threshold=Math.max(Number(req.query.privacyThreshold)||3,1);const suppress=obj=>Object.fromEntries(Object.entries(obj).map(([k,v])=>[k,v<threshold?null:v]));const verifiedCount=verifications.data.filter(x=>x.status==='verified').length;const reviewedCount=verifications.data.filter(x=>['verified','rejected'].includes(x.status)).length;const galleryReviewed=gallery.data.filter(x=>['approved','rejected'].includes(x.status));
+    res.json({days:sinceDays,privacyThreshold:threshold,definitions:{registrations:'Accounts created during the selected period.',verificationRate:'Verified decisions divided by all final verification decisions.',monthlyActive:'Distinct members who posted or commented during the period.',conversion:'Applied responses divided by opportunity views.',moderationHours:'Average hours from report creation to resolution.'},metrics:{registrations:currentProfiles.length,verified:verifiedCount,verificationRate:reviewedCount?Math.round(verifiedCount/reviewedCount*1000)/10:0,posts:posts.data.length,comments:comments.data.length,monthlyActive:new Set([...posts.data.map(x=>x.user_id),...comments.data.map(x=>x.user_id)]).size,galleryApprovalRate:galleryReviewed.length?Math.round(galleryReviewed.filter(x=>x.status==='approved').length/galleryReviewed.length*1000)/10:0,reports:reports.data.length,eventRegistrations:registrations.data.filter(x=>x.status!=='cancelled').length,eventAttendance:registrations.data.filter(x=>x.status==='attended').length,applications:applications.data.filter(x=>x.response==='applied').length,employerParticipation:currentProfiles.filter(x=>x.role==='employer').length,suspensions:currentProfiles.filter(x=>x.status==='suspended').length,verificationHours:averageHours(verifications.data,'reviewed_at'),moderationHours:averageHours(reports.data,'resolved_at')},trends:{registrations:trend(currentProfiles.length,previousProfiles.length)},timeline,breakdowns:{verification:suppress(group(verifications.data,'status')),reports:suppress(group(reports.data,'status')),attendance:suppress(group(registrations.data,'status')),opportunities:suppress(group(applications.data,'response')),departments:suppress(group(education.data,'department')),courses:suppress(group(education.data,'course')),batches:suppress(group(education.data,'batch_name'))}});
+  } catch(error){next(error);}
+});
+
+adminRouter.get('/moderation/reports', async(req,res,next)=>{
+  try { const status=String(req.query.status||'open'); let q=adminClient.from('content_reports').select('*, profiles!content_reports_reporter_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(100); if(status!=='all') q=q.eq('status',status); const {data,error}=await q;if(error)throw error;const reports=await Promise.all((data||[]).map(async report=>{let target=null;if(report.target_type==='feed_post'){const r=await adminClient.from('feed_posts').select('author_name,content,media_path,moderation_status').eq('id',report.target_id).maybeSingle();target=r.data;}if(report.target_type==='feed_comment'){const r=await adminClient.from('feed_comments').select('author_name,content,post_id,moderation_status').eq('id',report.target_id).maybeSingle();target=r.data;}return{...report,target};}));res.json({reports}); } catch(error){next(error);}
+});
+
+adminRouter.patch('/moderation/reports/:id', async(req,res,next)=>{
+  const status=String(req.body.status||''); const action=String(req.body.action||'keep'); const reason=String(req.body.reason||'').trim();
+  if(!['under_review','resolved','dismissed'].includes(status)||!['keep','hide','restore','remove','warn','lock_comments','unlock_comments','disable_reactions','enable_reactions','suspend','escalate'].includes(action)) return res.status(400).json({error:'Invalid moderation decision.'});
+  if(!reason) return res.status(400).json({error:'A moderation reason is required.'});
+  try { const {data:report,error}=await adminClient.from('content_reports').update({status,resolution:reason,resolved_by:status==='under_review'?null:req.admin.id,resolved_at:status==='under_review'?null:new Date().toISOString(),assigned_to:req.admin.id}).eq('id',req.params.id).select('*').single();if(error)throw error;
+    if(report.target_type==='feed_post' && action!=='escalate') await moderateFeedPost({postId:report.target_id,action,reason,actorId:req.admin.id,reportId:report.id});
+    else if(report.target_type==='feed_comment' && action!=='escalate') await moderateFeedComment({commentId:report.target_id,action,reason,actorId:req.admin.id,reportId:report.id});
+    else { await adminClient.from('moderation_actions').insert({report_id:report.id,target_type:report.target_type,target_id:report.target_id,action,reason,actor_id:req.admin.id,reversible_until:['hide','remove'].includes(action)?new Date(Date.now()+30*86400000).toISOString():null}); await writeAuditLog({actorId:req.admin.id,action:`moderation.${action}`,targetType:report.target_type,targetId:report.target_id,details:{reason,reportId:report.id}}); }
+    res.json({report}); } catch(error){next(error);}
+});
+
+adminRouter.get('/moderation/summary',async(req,res,next)=>{
+  const count=async(table,configure=q=>q)=>{const {count:errorCount,error}=await runSupabaseQuery(configure(adminClient.from(table).select('*',{count:'exact',head:true})));if(error)throw error;return errorCount||0;};
+  try { const today=new Date();today.setHours(0,0,0,0); const since=today.toISOString(); const [waiting,reports,approvedToday,needsChanges,hidden,featured,repeatOffenders,resolved] = await Promise.all([
+    count('gallery_submissions',q=>q.eq('status','pending')),count('content_reports',q=>q.in('status',['open','under_review'])),count('gallery_submissions',q=>q.eq('status','approved').gte('reviewed_at',since)),count('gallery_submissions',q=>q.eq('status','needs_information')),count('feed_posts',q=>q.eq('moderation_status','hidden')),count('gallery_submissions',q=>q.eq('featured',true).eq('status','approved')),count('profiles',q=>q.gte('warnings_count',2)),runSupabaseQuery(adminClient.from('content_reports').select('created_at,resolved_at').not('resolved_at','is',null).limit(500))]);
+    if(resolved.error)throw resolved.error; const avg=resolved.data.length?Math.round(resolved.data.reduce((sum,x)=>sum+(new Date(x.resolved_at)-new Date(x.created_at))/3600000,0)/resolved.data.length*10)/10:0;
+    res.json({metrics:{waiting,reports,approvedToday,needsChanges,hidden,featured,averageReviewHours:avg,repeatOffenders}});
+  }catch(error){next(error);}
+});
+
+adminRouter.get('/moderation/trash',async(req,res,next)=>{try{const {data,error}=await adminClient.from('feed_posts').select('id,user_id,author_name,content,media_path,created_at,deleted_at,deletion_reason').eq('moderation_status','removed').order('deleted_at',{ascending:false}).limit(100);if(error)throw error;res.json({items:data||[]});}catch(error){next(error);}});
+adminRouter.patch('/moderation/trash/:id/restore',async(req,res,next)=>{const reason=String(req.body.reason||'Restored from trash').trim();try{await moderateFeedPost({postId:req.params.id,action:'restore',reason,actorId:req.admin.id});res.json({success:true});}catch(error){next(error);}});
+adminRouter.get('/moderation/history',async(req,res,next)=>{try{let q=adminClient.from('moderation_actions').select('*,profiles!moderation_actions_actor_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(200);if(req.query.action&&req.query.action!=='all')q=q.eq('action',String(req.query.action));if(req.query.targetType&&req.query.targetType!=='all')q=q.eq('target_type',String(req.query.targetType));const{data,error}=await q;if(error)throw error;res.json({actions:data||[]});}catch(error){next(error);}});
+
+adminRouter.get('/events/:id/registrations',async(req,res,next)=>{try{const {data,error}=await adminClient.from('event_registrations').select('*, profiles!event_registrations_user_id_fkey(first_name,last_name,email)').eq('event_id',req.params.id).order('created_at',{ascending:false});if(error)throw error;res.json({registrations:data||[]});}catch(error){next(error);}});
+adminRouter.patch('/events/:eventId/registrations/:id',async(req,res,next)=>{const status=String(req.body.status||'');if(!['registered','waitlisted','cancelled','attended','no_show'].includes(status))return res.status(400).json({error:'Invalid attendance status.'});try{const {data,error}=await adminClient.from('event_registrations').update({status,checked_in_at:status==='attended'?new Date().toISOString():null,checked_in_by:status==='attended'?req.admin.id:null}).eq('id',req.params.id).eq('event_id',req.params.eventId).select('*').single();if(error)throw error;await writeAuditLog({actorId:req.admin.id,action:`event_registration.${status}`,targetType:'event_registration',targetId:data.id});res.json({registration:data});}catch(error){next(error);}});
+adminRouter.post('/events/:id/check-in',async(req,res,next)=>{const token=String(req.body.qrToken||'');try{const{data,error}=await adminClient.from('event_registrations').update({status:'attended',checked_in_at:new Date().toISOString(),checked_in_by:req.admin.id}).eq('event_id',req.params.id).eq('qr_token',token).select('*').single();if(error)throw error;await writeAuditLog({actorId:req.admin.id,action:'event.qr_check_in',targetType:'event_registration',targetId:data.id});res.json({registration:data});}catch(error){next(error);}});
+adminRouter.post('/events/:id/duplicate',async(req,res,next)=>{try{const{data:source,error}=await adminClient.from('admin_resources').select('*').eq('id',req.params.id).eq('resource_type','events').single();if(error)throw error;const payload={...source.payload,title:`${source.payload.title} (Copy)`,status:'draft',date:'',endDate:'',publishedAt:null};const{data,error:insertError}=await adminClient.from('admin_resources').insert({resource_type:'events',payload,created_by:req.admin.id}).select('*').single();if(insertError)throw insertError;await writeAuditLog({actorId:req.admin.id,action:'event.duplicated',targetType:'event',targetId:data.id,details:{sourceId:req.params.id}});res.status(201).json({event:data});}catch(error){next(error);}});
+adminRouter.post('/events/:id/reminders',async(req,res,next)=>{try{const{data,error}=await adminClient.from('event_registrations').select('id,user_id').eq('event_id',req.params.id).in('status',['registered','waitlisted']);if(error)throw error;if(data.length){await adminClient.from('account_notifications').insert(data.map(x=>({recipient_id:x.user_id,kind:'event_reminder',subject:'Upcoming alumni event',message:'Reminder: an event you registered for is coming up.'})));await adminClient.from('event_registrations').update({reminder_sent_at:new Date().toISOString()}).in('id',data.map(x=>x.id));}await writeAuditLog({actorId:req.admin.id,action:'event.reminders_sent',targetType:'event',targetId:req.params.id,details:{recipients:data.length}});res.json({sent:data.length});}catch(error){next(error);}});
+
+adminRouter.get('/permissions',async(req,res,next)=>{try{const {data,error}=await adminClient.from('admin_permissions').select('*, profiles(first_name,last_name,email,role)');if(error)throw error;res.json({permissions:data||[]});}catch(error){next(error);}});
+adminRouter.put('/permissions/:profileId',async(req,res,next)=>{if(req.admin.profile.role!=='admin')return res.status(403).json({error:'Super administrator access is required.'});const allowed=['dashboard','members','verification','opportunities','events','moderation','gallery','analytics','settings'];const templates={super_admin:allowed,alumni_officer:['dashboard','members','verification'],content_moderator:['dashboard','moderation','gallery'],career_officer:['dashboard','opportunities'],events_officer:['dashboard','events'],analyst:['dashboard','analytics']};const adminRole=String(req.body.adminRole||'analyst');if(!templates[adminRole])return res.status(400).json({error:'Choose a valid administrative role.'});const scopes=[...new Set((req.body.scopes||templates[adminRole]).filter(x=>allowed.includes(x)))];try{const {data,error}=await adminClient.from('admin_permissions').upsert({profile_id:req.params.profileId,scopes,admin_role:adminRole,updated_by:req.admin.id,updated_at:new Date().toISOString()}).select('*').single();if(error)throw error;await writeAuditLog({actorId:req.admin.id,action:'permissions.updated',targetType:'profile',targetId:req.params.profileId,details:{adminRole,scopes}});res.json({permission:data});}catch(error){next(error);}});
+
 adminRouter.get(
   '/audit-logs',
   async (req, res, next) => {
@@ -1459,6 +1669,7 @@ app.use(
 app.use(
   (error, req, res, next) => {
     console.error(error);
+    if(adminClient&&(error.status||500)>=500){adminClient.from('system_incidents').insert({service:'api',summary:`${req.method} ${req.originalUrl} failed`,details:String(error.message||error).slice(0,1500)}).then(({error:logError})=>{if(logError)console.warn('Could not record system incident:',logError.message);});}
 
     res.status(error.status || 500).json({
       error: error.publicMessage ||
@@ -1481,8 +1692,9 @@ adminRouter.post('/members', async (req, res, next) => {
     const { data, error } = await adminClient.auth.admin.createUser({ email, password, email_confirm: Boolean(req.body.email_confirmed), user_metadata: { first_name: firstName, last_name: lastName } });
     if (error) throw error;
     createdUser = data.user;
-    const { error: profileError } = await adminClient.from('profiles').upsert({ id: createdUser.id, first_name: firstName, last_name: lastName, email, role, status });
+    const { error: profileError } = await adminClient.from('profiles').upsert({ id: createdUser.id, first_name: firstName, last_name: lastName, email, role, status, account_source:'admin_created' });
     if (profileError) throw profileError;
+    await adminClient.from('profile_roles').upsert({profile_id:createdUser.id,role});
     await writeAuditLog({ actorId: req.admin.id, action: 'member.created', targetType: 'profile', targetId: createdUser.id, details: { email, role, status } });
     res.status(201).json({ id: createdUser.id });
   } catch (error) { if (createdUser?.id) await adminClient.auth.admin.deleteUser(createdUser.id); next(error); }
@@ -1490,16 +1702,24 @@ adminRouter.post('/members', async (req, res, next) => {
 
 adminRouter.get('/members/:id', async (req, res, next) => {
   try {
-    const [{ data: profile, error }, { data: education }, { data: verification }, { data: authData, error: authError }] = await Promise.all([
+    const [{ data: profile, error }, { data: education }, { data: verification }, { data: authData, error: authError },{data:roles},{data:employer},{data:verificationHistory},{count:posts},{count:comments},{count:eventRegistrations},{count:opportunities},{data:moderationHistory}] = await Promise.all([
       adminClient.from('profiles').select('*').eq('id', req.params.id).maybeSingle(),
       adminClient.from('education').select('*').eq('profile_id', req.params.id).order('created_at'),
       adminClient.from('alumni_verifications').select('id, graduation_name, graduation_year, graduation_date, batch_name, program, document_filename, status, reviewer_note, created_at, reviewed_at').eq('user_id', req.params.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       adminClient.auth.admin.getUserById(req.params.id),
+      adminClient.from('profile_roles').select('role').eq('profile_id',req.params.id),
+      adminClient.from('employer_profiles').select('*').eq('profile_id',req.params.id).maybeSingle(),
+      adminClient.from('alumni_verifications').select('id,status,reviewer_note,created_at,reviewed_at').eq('user_id',req.params.id).order('created_at',{ascending:false}),
+      adminClient.from('feed_posts').select('*',{count:'exact',head:true}).eq('user_id',req.params.id),
+      adminClient.from('feed_comments').select('*',{count:'exact',head:true}).eq('user_id',req.params.id),
+      adminClient.from('event_registrations').select('*',{count:'exact',head:true}).eq('user_id',req.params.id),
+      adminClient.from('opportunities').select('*',{count:'exact',head:true}).eq('user_id',req.params.id),
+      adminClient.from('moderation_actions').select('action,reason,created_at').eq('target_type','member').eq('target_id',req.params.id).order('created_at',{ascending:false}).limit(20),
     ]);
     if (error || authError) throw error || authError;
     if (!profile) return res.status(404).json({ error: 'Member not found.' });
     const authUser = authData.user;
-    res.json({ member: { ...profile, education: education || [], verification: verification || null, email_confirmed: Boolean(authUser.email_confirmed_at), locked: Boolean(authUser.banned_until && new Date(authUser.banned_until) > new Date()), last_sign_in_at: authUser.last_sign_in_at } });
+    res.json({ member: { ...profile, roles:(roles||[]).map(x=>x.role), education: education || [], employer:employer||null, verification: verification || null, verification_history:verificationHistory||[], activity:{posts:posts||0,comments:comments||0,events:eventRegistrations||0,opportunities:opportunities||0}, moderation_history:moderationHistory||[], email_confirmed: Boolean(authUser.email_confirmed_at), locked: Boolean(authUser.banned_until && new Date(authUser.banned_until) > new Date()), last_sign_in_at: authUser.last_sign_in_at, account_source:profile.account_source||authUser.app_metadata?.provider||'self_registration' } });
   } catch (error) { next(error); }
 });
 
@@ -1531,6 +1751,13 @@ adminRouter.patch('/members/:id/lock', async (req, res, next) => {
     res.json({ locked });
   } catch (error) { next(error); }
 });
+
+adminRouter.post('/members/:id/send-password-reset',async(req,res,next)=>{try{const{data:userData,error:userError}=await adminClient.auth.admin.getUserById(req.params.id);if(userError)throw userError;const{error}=await adminClient.auth.resetPasswordForEmail(userData.user.email);if(error)throw error;await writeAuditLog({actorId:req.admin.id,action:'member.password_reset_sent',targetType:'profile',targetId:req.params.id});res.json({success:true});}catch(error){next(error);}});
+adminRouter.post('/members/:id/resend-confirmation',async(req,res,next)=>{try{const{data:userData,error:userError}=await adminClient.auth.admin.getUserById(req.params.id);if(userError)throw userError;const{error}=await adminClient.auth.resend({type:'signup',email:userData.user.email});if(error)throw error;await writeAuditLog({actorId:req.admin.id,action:'member.confirmation_resent',targetType:'profile',targetId:req.params.id});res.json({success:true});}catch(error){next(error);}});
+adminRouter.put('/members/:id/roles',async(req,res,next)=>{const roles=[...new Set((req.body.roles||[]).map(x=>String(x).toLowerCase()).filter(x=>['alumni','employer','staff','admin'].includes(x)))];if(!roles.length)return res.status(400).json({error:'Select at least one role.'});if(req.params.id===req.admin.id&&!roles.includes('admin'))return res.status(400).json({error:'You cannot remove your own administrator role.'});try{await adminClient.from('profile_roles').delete().eq('profile_id',req.params.id);const{error}=await adminClient.from('profile_roles').insert(roles.map(role=>({profile_id:req.params.id,role})));if(error)throw error;await adminClient.from('profiles').update({role:roles.includes('admin')?'admin':roles[0]}).eq('id',req.params.id);await writeAuditLog({actorId:req.admin.id,action:'member.roles_updated',targetType:'profile',targetId:req.params.id,details:{roles}});res.json({roles});}catch(error){next(error);}});
+adminRouter.patch('/members/:id/suspension',async(req,res,next)=>{if(req.params.id===req.admin.id)return res.status(400).json({error:'You cannot suspend your own administrator account.'});const reason=String(req.body.reason||'').trim();const until=req.body.until?new Date(req.body.until):null;if(!reason||!until||Number.isNaN(until.getTime())||until<=new Date())return res.status(400).json({error:'A reason and future suspension expiration are required.'});const seconds=Math.max(60,Math.ceil((until-Date.now())/1000));try{const{error:authError}=await adminClient.auth.admin.updateUserById(req.params.id,{ban_duration:`${seconds}s`});if(authError)throw authError;const{error}=await adminClient.from('profiles').update({status:'suspended',suspension_reason:reason,suspension_expires_at:until.toISOString(),locked_until:until.toISOString()}).eq('id',req.params.id);if(error)throw error;await adminClient.from('moderation_actions').insert({target_type:'member',target_id:req.params.id,action:'suspend',reason,actor_id:req.admin.id,reversible_until:until.toISOString()});await writeAuditLog({actorId:req.admin.id,action:'member.suspended',targetType:'profile',targetId:req.params.id,details:{reason,until}});res.json({success:true});}catch(error){next(error);}});
+adminRouter.patch('/members/:id/deactivation',async(req,res,next)=>{if(req.params.id===req.admin.id)return res.status(400).json({error:'You cannot deactivate your own administrator account.'});const deactivate=Boolean(req.body.deactivate);const reason=String(req.body.reason||'Administrative deactivation').trim();try{const{error:authError}=await adminClient.auth.admin.updateUserById(req.params.id,{ban_duration:deactivate?'876000h':'none'});if(authError)throw authError;const{error}=await adminClient.from('profiles').update({deactivated_at:deactivate?new Date().toISOString():null,status:deactivate?'suspended':'pending',suspension_reason:deactivate?reason:null,suspension_expires_at:null}).eq('id',req.params.id);if(error)throw error;await adminClient.from('moderation_actions').insert({target_type:'member',target_id:req.params.id,action:deactivate?'suspend':'restore',reason,actor_id:req.admin.id});await writeAuditLog({actorId:req.admin.id,action:deactivate?'member.deactivated':'member.restored',targetType:'profile',targetId:req.params.id,details:{reason}});res.json({success:true});}catch(error){next(error);}});
+adminRouter.post('/members/:id/revoke-sessions',async(req,res,next)=>{if(req.params.id===req.admin.id)return res.status(400).json({error:'Use sign out to end your own administrator session.'});try{const{error}=await adminClient.auth.admin.updateUserById(req.params.id,{ban_duration:'1s',user_metadata:{sessions_revoked_at:new Date().toISOString()}});if(error)throw error;await writeAuditLog({actorId:req.admin.id,action:'member.sessions_revoked',targetType:'profile',targetId:req.params.id});res.json({success:true});}catch(error){next(error);}});
 
 /* =========================================================
    SERVE FRONTEND

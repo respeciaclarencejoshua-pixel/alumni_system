@@ -8,6 +8,11 @@ export default function Members() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All Roles');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
+  const [advanced,setAdvanced]=useState({department:'',course:'',year:'',batch:'',organization:'',email:'all',access:'all',joinedAfter:'',activeAfter:''});
+  const [exportOpen,setExportOpen]=useState(false);
+  const [exportScope,setExportScope]=useState('current');
+  const [exportFields,setExportFields]=useState(['name','email','roles','status','department','course','graduationYear','batchName','joined']);
+  const [selectedIds,setSelectedIds]=useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -16,7 +21,7 @@ export default function Members() {
   const [dialogMember, setDialogMember] = useState(null);
   const [saving, setSaving] = useState(false);
   const [verificationNote, setVerificationNote] = useState('');
-  const [memberForm, setMemberForm] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'alumni', status: 'pending', email_confirmed: true });
+  const [memberForm, setMemberForm] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'alumni', status: 'pending', suspension_reason:'', email_confirmed: true });
 
   const usersPerPage = 8;
 
@@ -28,10 +33,10 @@ export default function Members() {
     try {
       setLoadError('');
 
-      const { members } = await adminApi('/api/admin/members?pageSize=100');
-
-      setUsers(members);
-      setFilteredUsers(members);
+      const first = await adminApi('/api/admin/members?page=1&pageSize=100');
+      const pages=Math.ceil((first.total||0)/100);const rest=pages>1?await Promise.all(Array.from({length:pages-1},(_,i)=>adminApi(`/api/admin/members?page=${i+2}&pageSize=100`))):[];
+      const members=[...(first.members||[]),...rest.flatMap(x=>x.members||[])];
+      setUsers(members);setFilteredUsers(members);
     } catch (error) {
       setLoadError(error.message);
     }
@@ -58,10 +63,19 @@ export default function Members() {
           user.email.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
+    if(advanced.department)filtered=filtered.filter(x=>x.department===advanced.department);
+    if(advanced.course)filtered=filtered.filter(x=>x.course===advanced.course);
+    if(advanced.year)filtered=filtered.filter(x=>String(x.graduationYear)===advanced.year);
+    if(advanced.batch)filtered=filtered.filter(x=>x.batchName===advanced.batch);
+    if(advanced.organization)filtered=filtered.filter(x=>x.organization===advanced.organization);
+    if(advanced.email!=='all')filtered=filtered.filter(x=>x.emailConfirmed===(advanced.email==='confirmed'));
+    if(advanced.access==='locked')filtered=filtered.filter(x=>x.locked);if(advanced.access==='deactivated')filtered=filtered.filter(x=>x.deactivated);
+    if(advanced.joinedAfter)filtered=filtered.filter(x=>new Date(x.joined)>=new Date(advanced.joinedAfter));
+    if(advanced.activeAfter)filtered=filtered.filter(x=>x.lastSignInAt&&new Date(x.lastSignInAt)>=new Date(advanced.activeAfter));
 
     setFilteredUsers(filtered);
     setCurrentPage(1);
-  }, [users, searchQuery, roleFilter, statusFilter]);
+  }, [users, searchQuery, roleFilter, statusFilter,advanced]);
 
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const startIdx = (currentPage - 1) * usersPerPage;
@@ -155,7 +169,7 @@ export default function Members() {
     try {
       const { member } = await adminApi(`/api/admin/members/${user.id}`);
       setDialogMember(member);
-      setMemberForm({ first_name: member.first_name || '', last_name: member.last_name || '', email: member.email || '', password: '', role: member.role, status: member.status, email_confirmed: member.email_confirmed });
+      setMemberForm({ first_name: member.first_name || '', last_name: member.last_name || '', email: member.email || '', password: '', role: member.role, status: member.status, suspension_reason:member.suspension_reason||'', email_confirmed: member.email_confirmed });
     } catch (error) { setActionError(error.message); setDialog(null); }
   }
 
@@ -201,6 +215,8 @@ export default function Members() {
     finally { setSaving(false); }
   }
 
+  async function accountAction(action){if(!dialogMember)return;try{if(action==='reset')await adminApi(`/api/admin/members/${dialogMember.id}/send-password-reset`,{method:'POST'});if(action==='confirm')await adminApi(`/api/admin/members/${dialogMember.id}/resend-confirmation`,{method:'POST'});if(action==='sessions')await adminApi(`/api/admin/members/${dialogMember.id}/revoke-sessions`,{method:'POST'});if(action==='roles'){const value=window.prompt('Enter roles separated by commas: alumni, employer, staff, admin',(dialogMember.roles||[dialogMember.role]).join(', '));if(!value)return;await adminApi(`/api/admin/members/${dialogMember.id}/roles`,{method:'PUT',body:JSON.stringify({roles:value.split(',').map(x=>x.trim())})})}if(action==='suspend'){const reason=window.prompt('Suspension reason:');if(!reason)return;const until=window.prompt('Suspend until (YYYY-MM-DD):');if(!until)return;await adminApi(`/api/admin/members/${dialogMember.id}/suspension`,{method:'PATCH',body:JSON.stringify({reason,until})})}if(action==='deactivate'||action==='restore'){const deactivate=action==='deactivate';const reason=window.prompt(deactivate?'Reason for permanent deactivation:':'Reason for restoring this account:');if(!reason)return;await adminApi(`/api/admin/members/${dialogMember.id}/deactivation`,{method:'PATCH',body:JSON.stringify({deactivate,reason})})}setActionError(action==='reset'?'Password-reset email sent.':'Account action completed.');const{member}=await adminApi(`/api/admin/members/${dialogMember.id}`);setDialogMember(member);loadMembers()}catch(error){setActionError(error.message)}}
+
   function verificationPanel() {
     const verification = dialogMember?.verification;
     if (!verification) return <section className="member-verification empty"><h3>No verification submission</h3><p>This member has not uploaded graduation evidence yet.</p></section>;
@@ -208,24 +224,12 @@ export default function Members() {
     return <section className="member-verification"><header><div><small>Alumni verification</small><h3>Graduation evidence</h3></div><b className={`verification-state ${verification.status}`}>{verification.status.replace('_', ' ')}</b></header><div className="verification-facts"><span><small>Graduation name</small><strong>{verification.graduation_name}</strong></span><span><small>Program</small><strong>{verification.program}</strong></span><span><small>Graduation year</small><strong>{verification.graduation_year}</strong></span></div><button className="verification-document-button" onClick={openVerificationDocument}>📄 <span><strong>{verification.document_filename}</strong><small>Open secure document · link expires in 60 seconds</small></span></button><label>Reviewer notes<textarea value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="Add a note for the alumnus…" /></label>{awaitingDecision ? <footer><button disabled={saving} onClick={() => decideVerification('rejected')}>Reject</button><button disabled={saving} onClick={() => decideVerification('needs_information')}>Request information</button><button className="approve" disabled={saving} onClick={() => decideVerification('verified')}>Approve & verify</button></footer> : <p className="verification-reviewed">Decision recorded{verification.reviewed_at ? ` on ${new Date(verification.reviewed_at).toLocaleDateString()}` : ''}.</p>}</section>;
   }
 
-  const handleExportCSV = () => {
-    const headers = [
-      'Name',
-      'Email',
-      'Role',
-      'Joined',
-      'Status',
-      'Email Confirmed',
-    ];
+  function memberInsightsPanel(){if(!dialogMember)return null;return <section className="member-insights"><h3>Profile &amp; activity</h3><dl><div><dt>Roles</dt><dd>{(dialogMember.roles||[dialogMember.role]).join(', ')}</dd></div><div><dt>Warnings</dt><dd>{dialogMember.warnings_count||0}</dd></div><div><dt>Account source</dt><dd>{dialogMember.account_source||'self registration'}</dd></div><div><dt>Suspension ends</dt><dd>{dialogMember.suspension_expires_at?new Date(dialogMember.suspension_expires_at).toLocaleString():'Not suspended'}</dd></div></dl>{dialogMember.employer&&<p className="member-education"><strong>{dialogMember.employer.organization}</strong><span>{dialogMember.employer.job_title} · {dialogMember.employer.company_email}</span></p>}<div className="member-activity-counts">{Object.entries(dialogMember.activity||{}).map(([key,value])=><span key={key}><strong>{value}</strong>{key}</span>)}</div><h3>Verification history</h3>{dialogMember.verification_history?.length?dialogMember.verification_history.map(x=><p className="member-history-row" key={x.id}><b>{x.status.replace('_',' ')}</b><span>{new Date(x.created_at).toLocaleString()}{x.reviewer_note?` · ${x.reviewer_note}`:''}</span></p>):<p className="member-modal-empty">No verification history.</p>}<h3>Account security</h3><div className="member-security-actions"><button onClick={()=>accountAction('reset')}>Send password reset</button>{!dialogMember.email_confirmed&&<button onClick={()=>accountAction('confirm')}>Resend confirmation</button>}<button onClick={()=>accountAction('roles')}>Change roles</button><button onClick={()=>accountAction('sessions')}>Revoke sessions</button><button onClick={()=>accountAction('suspend')}>Temporary suspension</button><button className="danger" onClick={()=>accountAction(dialogMember.deactivated_at?'restore':'deactivate')}>{dialogMember.deactivated_at?'Restore account':'Deactivate account'}</button></div></section>}
 
-    const rows = filteredUsers.map(user => [
-      user.name,
-      user.email,
-      user.role,
-      user.joined,
-      user.status,
-      user.emailConfirmed ? 'Yes' : 'No',
-    ]);
+  const handleExportCSV = () => {
+    const definitions={name:['Name',u=>u.name],email:['Email',u=>u.email],roles:['Roles',u=>(u.roles||[u.role]).join('; ')],status:['Status',u=>u.status],department:['Department',u=>u.department],course:['Course',u=>u.course],graduationYear:['Graduation year',u=>u.graduationYear],batchName:['Batch name',u=>u.batchName],organization:['Employer organization',u=>u.organization],joined:['Joined',u=>u.joined],emailConfirmed:['Email confirmed',u=>u.emailConfirmed?'Yes':'No']};
+    const chosen=exportFields.filter(x=>definitions[x]);const headers=chosen.map(x=>definitions[x][0]);const source=exportScope==='all'?users:exportScope==='selected'?users.filter(x=>selectedIds.includes(x.id)):filteredUsers;
+    const rows = source.map(user => chosen.map(field=>definitions[field][1](user)??''));
 
     const csv = [headers, ...rows]
       .map(row =>
@@ -281,7 +285,7 @@ export default function Members() {
         <div className="members-actions">
           <button
             className="btn-secondary"
-            onClick={handleExportCSV}
+            onClick={()=>setExportOpen(x=>!x)}
           >
             ⬇ Export CSV
           </button>
@@ -291,6 +295,8 @@ export default function Members() {
           </button>
         </div>
       </div>
+
+      {exportOpen&&<section className="member-export-panel"><div><strong>Export safe member fields</strong><span>Passwords, security data, and verification documents are always excluded.</span></div><label>Scope<select value={exportScope} onChange={e=>setExportScope(e.target.value)}><option value="current">Current search results</option><option value="selected">Selected members ({selectedIds.length})</option><option value="all">All loaded members</option></select></label><fieldset><legend>Columns</legend>{Object.entries({name:'Name',email:'Email',roles:'Roles',status:'Status',department:'Department',course:'Course',graduationYear:'Graduation year',batchName:'Batch name',organization:'Organization',joined:'Joined',emailConfirmed:'Email confirmation'}).map(([key,label])=><label key={key}><input type="checkbox" checked={exportFields.includes(key)} onChange={e=>setExportFields(f=>e.target.checked?[...f,key]:f.filter(x=>x!==key))}/>{label}</label>)}</fieldset><button disabled={!exportFields.length||(exportScope==='selected'&&!selectedIds.length)} onClick={handleExportCSV}>Download CSV</button></section>}
 
       <div className="members-filters">
         <div className="filter-group">
@@ -334,6 +340,8 @@ export default function Members() {
           />
         </div>
       </div>
+
+      <details className="advanced-member-filters"><summary>Advanced filters</summary><div>{[['department','Department'],['course','Course'],['year','Graduation year'],['batch','Batch name'],['organization','Employer organization']].map(([key,label])=><label key={key}>{label}<select value={advanced[key]} onChange={e=>setAdvanced({...advanced,[key]:e.target.value})}><option value="">All</option>{[...new Set(users.map(x=>key==='year'?x.graduationYear:key==='batch'?x.batchName:x[key]).filter(Boolean))].sort().map(x=><option key={x}>{x}</option>)}</select></label>)}<label>Email state<select value={advanced.email} onChange={e=>setAdvanced({...advanced,email:e.target.value})}><option value="all">All</option><option value="confirmed">Confirmed</option><option value="unconfirmed">Unconfirmed</option></select></label><label>Account access<select value={advanced.access} onChange={e=>setAdvanced({...advanced,access:e.target.value})}><option value="all">All</option><option value="locked">Locked</option><option value="deactivated">Deactivated</option></select></label><label>Registered after<input type="date" value={advanced.joinedAfter} onChange={e=>setAdvanced({...advanced,joinedAfter:e.target.value})}/></label><label>Last active after<input type="date" value={advanced.activeAfter} onChange={e=>setAdvanced({...advanced,activeAfter:e.target.value})}/></label><button onClick={()=>setAdvanced({department:'',course:'',year:'',batch:'',organization:'',email:'all',access:'all',joinedAfter:'',activeAfter:''})}>Reset filters</button></div></details>
 
       <div className="members-results-summary">
         <strong>{filteredUsers.length} {filteredUsers.length === 1 ? 'member' : 'members'}</strong>
@@ -381,6 +389,7 @@ export default function Members() {
             key={user.id}
           >
             <div className="col-user">
+              <input className="member-select" type="checkbox" checked={selectedIds.includes(user.id)} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,user.id]:ids.filter(id=>id!==user.id))} aria-label={`Select ${user.name}`}/>
               <div className="user-avatar">
                 {getInitials(user.name)}
               </div>
@@ -569,6 +578,7 @@ export default function Members() {
         {actionError && <p className="member-dialog-error" role="alert">{actionError}</p>}
         {dialog === 'view' ? (dialogMember ? <div className="member-profile-view"><div className="member-profile-identity"><div className="user-avatar">{getInitials(`${dialogMember.first_name || ''} ${dialogMember.last_name || ''}`)}</div><span><strong>{dialogMember.first_name} {dialogMember.last_name}</strong><small>{dialogMember.email}</small></span></div><dl><div><dt>Role</dt><dd>{dialogMember.role}</dd></div><div><dt>Status</dt><dd>{dialogMember.status}</dd></div><div><dt>Email</dt><dd>{dialogMember.email_confirmed ? 'Confirmed' : 'Not confirmed'}</dd></div><div><dt>Access</dt><dd>{dialogMember.locked ? 'Locked' : 'Active'}</dd></div><div><dt>Joined</dt><dd>{formatJoined(dialogMember.created_at).date}</dd></div><div><dt>Last sign in</dt><dd>{dialogMember.last_sign_in_at ? new Date(dialogMember.last_sign_in_at).toLocaleString() : 'Never'}</dd></div></dl><h3>Education</h3>{dialogMember.education?.length ? dialogMember.education.map((item) => <p className="member-education" key={item.id}><strong>{item.course || item.degree || 'Education record'}</strong><span>{item.department || ''}{item.graduation_year ? ` · Class of ${item.graduation_year}` : ''}</span></p>) : <p className="member-modal-empty">No education records added.</p>}</div> : <p className="member-modal-empty">Loading member…</p>) : <form className="member-form" onSubmit={saveMember}><div className="member-form-grid"><label>First name<input required value={memberForm.first_name} onChange={(e) => setMemberForm({...memberForm,first_name:e.target.value})}/></label><label>Last name<input required value={memberForm.last_name} onChange={(e) => setMemberForm({...memberForm,last_name:e.target.value})}/></label></div><label>Email address<input required type="email" value={memberForm.email} onChange={(e) => setMemberForm({...memberForm,email:e.target.value})}/></label>{dialog === 'add' && <label>Temporary password<input required minLength="8" type="password" value={memberForm.password} onChange={(e) => setMemberForm({...memberForm,password:e.target.value})}/><small>At least 8 characters. Share it securely with the member.</small></label>}<div className="member-form-grid"><label>Role<select value={memberForm.role} onChange={(e) => setMemberForm({...memberForm,role:e.target.value})}>{['alumni','employer','staff','admin'].map(item=><option key={item}>{item}</option>)}</select></label><label>Account status<select value={memberForm.status} onChange={(e) => setMemberForm({...memberForm,status:e.target.value})}>{['pending','verified','suspended'].map(item=><option key={item}>{item}</option>)}</select></label></div>{dialog === 'add' && <label className="member-check"><input type="checkbox" checked={memberForm.email_confirmed} onChange={(e) => setMemberForm({...memberForm,email_confirmed:e.target.checked})}/> Mark email as confirmed</label>}<footer><button type="button" onClick={() => setDialog(null)}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : dialog === 'add' ? 'Create member' : 'Save changes'}</button></footer></form>}
         {dialog === 'view' && dialogMember && verificationPanel()}
+        {dialog === 'view' && dialogMember && memberInsightsPanel()}
       </section></div>}
     </div>
   );

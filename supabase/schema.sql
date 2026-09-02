@@ -753,6 +753,211 @@ on public.admin_audit_logs (created_at desc);
 
 alter table public.admin_audit_logs enable row level security;
 
+-- ============================================================
+-- 14. CONNECTED ADMIN OPERATIONS
+-- Additive workflow tables used by moderation, events, permissions,
+-- recovery, and the unified administrative attention queue.
+-- ============================================================
+
+alter table public.profiles add column if not exists locked_until timestamptz;
+alter table public.profiles add column if not exists suspension_reason text;
+alter table public.profiles add column if not exists deactivated_at timestamptz;
+alter table public.profiles add column if not exists suspension_expires_at timestamptz;
+alter table public.profiles add column if not exists account_source text not null default 'self_registration';
+alter table public.profiles add column if not exists last_active_at timestamptz;
+
+alter table public.alumni_verifications drop constraint if exists alumni_verifications_status_check;
+alter table public.alumni_verifications add constraint alumni_verifications_status_check check(status in ('pending','under_review','needs_information','verified','rejected','expired'));
+alter table public.alumni_verifications add column if not exists assigned_to uuid references public.profiles(id);
+alter table public.alumni_verifications add column if not exists priority text not null default 'normal' check(priority in ('low','normal','high','urgent'));
+alter table public.alumni_verifications add column if not exists expires_at timestamptz;
+alter table public.alumni_verifications add column if not exists retention_delete_at timestamptz;
+alter table public.alumni_verifications add column if not exists document_deleted_at timestamptz;
+alter table public.alumni_verifications add column if not exists scan_status text not null default 'pending' check(scan_status in ('pending','clean','flagged','failed'));
+alter table public.alumni_verifications add column if not exists file_size_bytes bigint;
+alter table public.alumni_verifications add column if not exists mime_type text;
+
+create table if not exists public.verification_document_accesses(id uuid primary key default gen_random_uuid(),verification_id uuid not null references public.alumni_verifications(id) on delete cascade,accessed_by uuid not null references public.profiles(id),action text not null check(action in ('view','replace','delete')),created_at timestamptz not null default now());
+create index if not exists verification_document_access_idx on public.verification_document_accesses(verification_id,created_at desc);
+alter table public.verification_document_accesses enable row level security;
+
+create table if not exists public.account_notifications(id uuid primary key default gen_random_uuid(),recipient_id uuid not null references public.profiles(id) on delete cascade,kind text not null,subject text not null,message text not null,read_at timestamptz,created_at timestamptz not null default now());
+create index if not exists account_notifications_recipient_idx on public.account_notifications(recipient_id,created_at desc);
+alter table public.account_notifications enable row level security;
+drop policy if exists "Users view own account notifications" on public.account_notifications;
+create policy "Users view own account notifications" on public.account_notifications for select to authenticated using(recipient_id=auth.uid());
+create or replace function public.notify_verification_received() returns trigger language plpgsql security definer set search_path=public as $$ begin insert into public.account_notifications(recipient_id,kind,subject,message) values(new.user_id,'verification_received','Verification received','Your graduation evidence was received and is waiting for review.');return new;end;$$;
+drop trigger if exists verification_received_notification on public.alumni_verifications;
+create trigger verification_received_notification after insert on public.alumni_verifications for each row execute function public.notify_verification_received();
+drop policy if exists "Users replace own verification document" on public.alumni_verifications;
+create policy "Users replace own verification document" on public.alumni_verifications for update to authenticated using(user_id=auth.uid() and status='needs_information') with check(user_id=auth.uid() and status='pending');
+
+alter table public.opportunities drop constraint if exists opportunities_status_check;
+alter table public.opportunities add constraint opportunities_status_check check (status in ('draft','submitted','under_review','needs_changes','approved','active','paused','expired','archived','rejected'));
+alter table public.opportunities alter column status set default 'submitted';
+alter table public.opportunities add column if not exists employment_type text;
+alter table public.opportunities add column if not exists work_arrangement text;
+alter table public.opportunities add column if not exists salary_range text;
+alter table public.opportunities add column if not exists application_deadline date;
+alter table public.opportunities add column if not exists reviewer_note text;
+alter table public.opportunities add column if not exists reviewed_by uuid references public.profiles(id);
+alter table public.opportunities add column if not exists reviewed_at timestamptz;
+alter table public.opportunities add column if not exists featured boolean not null default false;
+alter table public.opportunities drop constraint if exists opportunities_status_check;
+alter table public.opportunities add constraint opportunities_status_check check(status in ('draft','submitted','under_review','needs_changes','approved','published','active','paused','expired','archived','rejected'));
+alter table public.opportunities add column if not exists required_experience text;
+alter table public.opportunities add column if not exists required_course text;
+alter table public.opportunities add column if not exists required_department text;
+alter table public.opportunities add column if not exists contact_person text;
+alter table public.opportunities add column if not exists contact_email text;
+alter table public.opportunities add column if not exists openings integer check(openings is null or openings>0);
+alter table public.opportunities add column if not exists industry text;
+alter table public.opportunities add column if not exists view_count integer not null default 0;
+alter table public.opportunities add column if not exists published_at timestamptz;
+alter table public.opportunities add column if not exists fraud_reported_at timestamptz;
+
+create table if not exists public.content_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid not null references public.profiles(id) on delete cascade,
+  target_type text not null check (target_type in ('feed_post','feed_comment','gallery_submission','direct_message','member')),
+  target_id text not null,
+  reason text not null check (reason in ('spam','harassment','inappropriate','misinformation','privacy','copyright','scam','other')),
+  details text,
+  status text not null default 'open' check (status in ('open','under_review','resolved','dismissed')),
+  assigned_to uuid references public.profiles(id),
+  resolution text,
+  resolved_by uuid references public.profiles(id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists content_reports_status_created_idx on public.content_reports(status,created_at desc);
+alter table public.content_reports enable row level security;
+drop policy if exists "Users can create reports" on public.content_reports;
+drop policy if exists "Users can view own reports" on public.content_reports;
+create policy "Users can create reports" on public.content_reports for insert to authenticated with check (reporter_id=auth.uid());
+create policy "Users can view own reports" on public.content_reports for select to authenticated using (reporter_id=auth.uid());
+
+create table if not exists public.moderation_actions (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid references public.content_reports(id) on delete set null,
+  target_type text not null,
+  target_id text not null,
+  action text not null check (action in ('keep','hide','restore','remove','warn','lock_comments','suspend','escalate')),
+  reason text not null,
+  actor_id uuid not null references public.profiles(id),
+  reversible_until timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists moderation_actions_target_idx on public.moderation_actions(target_type,target_id,created_at desc);
+alter table public.moderation_actions enable row level security;
+
+-- Moderation lifecycle and recoverable content removal.
+alter table public.feed_posts add column if not exists moderation_status text not null default 'published';
+alter table public.feed_posts drop constraint if exists feed_posts_moderation_status_check;
+alter table public.feed_posts add constraint feed_posts_moderation_status_check check (moderation_status in ('published','hidden','removed'));
+alter table public.feed_posts add column if not exists comments_locked boolean not null default false;
+alter table public.feed_posts add column if not exists reactions_disabled boolean not null default false;
+alter table public.feed_posts add column if not exists deleted_at timestamptz;
+alter table public.feed_posts add column if not exists deletion_reason text;
+alter table public.feed_posts add column if not exists deleted_by uuid references public.profiles(id);
+create index if not exists feed_posts_moderation_status_idx on public.feed_posts(moderation_status,created_at desc);
+alter table public.feed_comments add column if not exists moderation_status text not null default 'published';
+alter table public.feed_comments drop constraint if exists feed_comments_moderation_status_check;
+alter table public.feed_comments add constraint feed_comments_moderation_status_check check (moderation_status in ('published','hidden','removed'));
+alter table public.feed_comments add column if not exists deleted_at timestamptz;
+alter table public.feed_comments add column if not exists deletion_reason text;
+
+alter table public.profiles add column if not exists warnings_count integer not null default 0;
+
+alter table public.gallery_submissions drop constraint if exists gallery_submissions_status_check;
+alter table public.gallery_submissions add constraint gallery_submissions_status_check check (status in ('pending','needs_information','approved','rejected','archived'));
+alter table public.gallery_submissions add column if not exists batch_name text;
+alter table public.gallery_submissions add column if not exists featured_rank integer;
+alter table public.gallery_submissions add column if not exists featured_starts_at timestamptz;
+alter table public.gallery_submissions add column if not exists featured_ends_at timestamptz;
+alter table public.gallery_submissions add column if not exists archived_at timestamptz;
+
+alter table public.moderation_actions drop constraint if exists moderation_actions_action_check;
+alter table public.moderation_actions add constraint moderation_actions_action_check check (action in ('keep','hide','restore','remove','warn','lock_comments','unlock_comments','disable_reactions','enable_reactions','suspend','escalate','feature','unfeature','archive'));
+
+-- Enforce moderation restrictions at the database boundary, not only in the UI.
+drop policy if exists "Users can add their own feed reactions" on public.feed_reactions;
+drop policy if exists "Users can update their own feed reactions" on public.feed_reactions;
+create policy "Users can add their own feed reactions" on public.feed_reactions for insert to authenticated
+with check (auth.uid()=user_id and exists(select 1 from public.feed_posts p where p.id=post_id and p.moderation_status='published' and not p.reactions_disabled));
+create policy "Users can update their own feed reactions" on public.feed_reactions for update to authenticated
+using (auth.uid()=user_id) with check (auth.uid()=user_id and exists(select 1 from public.feed_posts p where p.id=post_id and p.moderation_status='published' and not p.reactions_disabled));
+drop policy if exists "Users can add their own feed comments" on public.feed_comments;
+create policy "Users can add their own feed comments" on public.feed_comments for insert to authenticated
+with check (auth.uid()=user_id and exists(select 1 from public.feed_posts p where p.id=post_id and p.moderation_status='published' and not p.comments_locked));
+drop policy if exists "Authenticated users can view feed comments" on public.feed_comments;
+create policy "Authenticated users can view feed comments" on public.feed_comments for select to authenticated
+using (moderation_status='published' or user_id=auth.uid());
+drop policy if exists "Authenticated users can view feed posts" on public.feed_posts;
+create policy "Authenticated users can view feed posts" on public.feed_posts for select to authenticated
+using ((moderation_status='published' and deleted_at is null) or user_id=auth.uid());
+
+create table if not exists public.event_registrations (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.admin_resources(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  status text not null default 'registered' check (status in ('registered','waitlisted','cancelled','attended','no_show')),
+  checked_in_at timestamptz,
+  checked_in_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  unique(event_id,user_id)
+);
+alter table public.event_registrations add column if not exists qr_token uuid not null default gen_random_uuid();
+alter table public.event_registrations add column if not exists feedback_rating smallint check(feedback_rating between 1 and 5);
+alter table public.event_registrations add column if not exists feedback_text text;
+alter table public.event_registrations add column if not exists reminder_sent_at timestamptz;
+
+create table if not exists public.system_incidents (
+  id uuid primary key default gen_random_uuid(),
+  service text not null check(service in ('api','email','upload','database','storage','external')),
+  summary text not null,
+  details text,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists system_incidents_open_idx on public.system_incidents(resolved_at,created_at desc);
+alter table public.system_incidents enable row level security;
+create index if not exists event_registrations_event_status_idx on public.event_registrations(event_id,status);
+alter table public.event_registrations enable row level security;
+drop policy if exists "Users manage own event registrations" on public.event_registrations;
+create policy "Users manage own event registrations" on public.event_registrations for all to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+create or replace function public.apply_event_capacity() returns trigger language plpgsql security definer set search_path=public as $$ declare maximum integer; active_count integer; begin select nullif(payload->>'capacity','')::integer into maximum from public.admin_resources where id=new.event_id and resource_type='events';if maximum is not null then select count(*) into active_count from public.event_registrations where event_id=new.event_id and status in('registered','attended');if active_count>=maximum then new.status:='waitlisted';end if;end if;return new;end;$$;
+drop trigger if exists event_capacity_waitlist on public.event_registrations;
+create trigger event_capacity_waitlist before insert on public.event_registrations for each row execute function public.apply_event_capacity();
+create or replace function public.notify_event_registration() returns trigger language plpgsql security definer set search_path=public as $$ begin insert into public.account_notifications(recipient_id,kind,subject,message) values(new.user_id,'event_registration','Event registration received',case when new.status='waitlisted' then 'The event is full and you have been added to the waitlist.' else 'Your event registration is confirmed.' end);return new;end;$$;
+drop trigger if exists event_registration_notification on public.event_registrations;
+create trigger event_registration_notification after insert on public.event_registrations for each row execute function public.notify_event_registration();
+
+create table if not exists public.admin_permissions (
+  profile_id uuid primary key references public.profiles(id) on delete cascade,
+  scopes text[] not null default '{}',
+  updated_by uuid references public.profiles(id),
+  updated_at timestamptz not null default now()
+);
+alter table public.admin_permissions enable row level security;
+
+alter table public.system_settings add column if not exists session_timeout_minutes integer not null default 60;
+alter table public.system_settings add column if not exists require_admin_mfa boolean not null default false;
+alter table public.system_settings add column if not exists content_retention_days integer not null default 30;
+alter table public.system_settings add column if not exists maintenance_mode boolean not null default false;
+alter table public.system_settings add column if not exists approved_email_domains text[] not null default '{}';
+alter table public.system_settings add column if not exists captcha_provider text default 'turnstile';
+alter table public.system_settings add column if not exists captcha_enabled boolean not null default true;
+alter table public.system_settings add column if not exists upload_max_mb integer not null default 10;
+alter table public.system_settings add column if not exists allowed_file_types text[] not null default array['image/jpeg','image/png','image/webp','application/pdf'];
+alter table public.system_settings add column if not exists verification_document_retention_days integer not null default 30;
+alter table public.system_settings add column if not exists moderation_reasons text[] not null default array['spam','harassment','inappropriate','misinformation','privacy','copyright','scam','other'];
+alter table public.system_settings add column if not exists rate_limit_per_minute integer not null default 60;
+alter table public.system_settings add column if not exists email_templates jsonb not null default '{}'::jsonb;
+alter table public.system_settings add column if not exists backup_status text default 'not_configured';
+alter table public.system_settings add column if not exists storage_usage_bytes bigint not null default 0;
+alter table public.admin_permissions add column if not exists admin_role text not null default 'analyst' check(admin_role in ('super_admin','alumni_officer','content_moderator','career_officer','events_officer','analyst'));
+
 
 -- ============================================================
 -- 8. AUTOMATIC PROFILE CREATION

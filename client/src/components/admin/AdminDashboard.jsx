@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './AdminDashboard.css';
 import Members from './Members.jsx';
 import AlumniVerification from './AlumniVerification.jsx';
@@ -6,6 +6,8 @@ import OpportunitiesEvents from './OpportunitiesEvents.jsx';
 import AdminOverview from './AdminOverview.jsx';
 import CommunityContent from './CommunityContent.jsx';
 import SystemSettings from './SystemSettings.jsx';
+import AdminAnalytics from './AdminAnalytics.jsx';
+import { adminApi } from '../../lib/adminApi.js';
 
 const metrics = [
   ['Total alumni', '12,482', '↑ 4.2% this month', 'positive'], ['Verified alumni', '9,102', '73% of total', ''],
@@ -98,11 +100,13 @@ function Settings() {
 
 export default function AdminDashboard({ onSignOut }) {
   const [activePage, setActivePage] = useState('Dashboard');
+  const [taskCounts,setTaskCounts]=useState({});
+  useEffect(()=>{adminApi('/api/admin/attention').then(r=>setTaskCounts((r.items||[]).reduce((m,x)=>({...m,[x.page]:(m[x.page]||0)+x.count}),{}))).catch(()=>{})},[activePage]);
 
   return <div className="admin-shell">
     <aside className="admin-sidebar">
       <div className="admin-sidebar-brand"><strong>Admin Portal</strong><small>System control center</small></div>
-      <nav className="admin-nav">{[['▦', 'Dashboard'], ['♙', 'Members'], ['✓', 'Alumni Verification'], ['▣', 'Opportunities & Events'], ['▤', 'Social & News'], ['◔', 'Analytics'], ['⚙', 'Settings']].map(([icon, item]) => <button className={activePage === item ? 'selected' : ''} key={item} onClick={() => setActivePage(item)}><span>{icon}</span>{item}{item === 'Alumni Verification' && <b className="nav-count">14</b>}</button>)}</nav>
+      <nav className="admin-nav">{[['▦', 'Dashboard'], ['♙', 'Members'], ['✓', 'Alumni Verification'], ['▣', 'Opportunities & Events'], ['▤', 'Social & News'], ['◔', 'Analytics'], ['⚙', 'Settings']].map(([icon, item]) => <button className={activePage === item ? 'selected' : ''} key={item} onClick={() => setActivePage(item)}><span>{icon}</span>{item}{taskCounts[item]>0&&<b className="nav-count">{taskCounts[item]}</b>}</button>)}</nav>
       <div className="admin-user"><b>AU</b><span><strong>Admin User</strong><small>Super administrator</small></span></div><button className="admin-report" onClick={onSignOut}>Sign out</button>
     </aside>
     <section className="admin-content">
@@ -119,7 +123,7 @@ export default function AdminDashboard({ onSignOut }) {
       {activePage === 'Alumni Verification' && <AlumniVerification />}
       {activePage === 'Opportunities & Events' && <OpportunitiesEvents />}
       {activePage === 'Social & News' && <CommunityContent />}
-      {activePage === 'Analytics' && <AdminOverview onNavigate={setActivePage} />}
+      {activePage === 'Analytics' && <AdminAnalytics />}
       {activePage === 'Settings' && <SystemSettings />}
     </section>
   </div>;
