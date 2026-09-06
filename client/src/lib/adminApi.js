@@ -13,6 +13,11 @@ export async function adminApi(path, options = {}) {
     },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'The admin request failed.');
+  if (!response.ok) {
+    const error = new Error(data.error || 'The admin request failed.');
+    error.code = data.code || 'ADMIN_REQUEST_FAILED';
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }

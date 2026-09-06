@@ -61,24 +61,27 @@ function EventLocationMap({ event }) {
   return <section className="public-event-map" aria-label="Event map"><iframe title={`Map for ${event.title}`} src={`https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${lat}%2C${lng}`} loading="lazy"/><a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`} target="_blank" rel="noreferrer">View location in OpenStreetMap ↗</a></section>;
 }
 
-export default function EventsPage() {
+export default function EventsPage({ user, verificationStatus }) {
   const [events, setEvents] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All Events');
-  const [selectedTimeframe, setSelectedTimeframe] = useState('Upcoming');
+  const [selectedTimeframe, setSelectedTimeframe] = useState('All dates');
   const [locationFilter, setLocationFilter] = useState('');
   const [dateSearch, setDateSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [interestedIds, setInterestedIds] = useState([]);
+  const [registrationStatuses, setRegistrationStatuses] = useState({});
   const [eventMessage, setEventMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError,setLoadError]=useState('');const[reloadKey,setReloadKey]=useState(0);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadEvents() {
       try {
+        setLoadError('');
         const response = await fetch('/api/events');
         if (!response.ok) throw new Error('Unable to load events');
         const payload = await response.json();
@@ -87,7 +90,7 @@ export default function EventsPage() {
           setEvents(loaded);
         }
       } catch (error) {
-        console.error('Error loading events:', error);
+        setLoadError(error.message||'Events could not be loaded.');
         if (isMounted) {
           setEvents([]);
         }
@@ -100,9 +103,21 @@ export default function EventsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [reloadKey]);
 
-  const categories = ['All Events', 'Networking', 'Webinars', 'Homecoming'];
+  useEffect(() => {
+    if (!user?.id || verificationStatus !== 'verified') { setInterestedIds([]); setRegistrationStatuses({}); return; }
+    let active = true;
+    supabase.from('event_registrations').select('event_id,status').eq('user_id', user.id).then(({ data, error }) => {
+      if (!active || error) return;
+      const current = (data || []).filter((item) => ['registered','waitlisted','attended'].includes(item.status));
+      setInterestedIds(current.map((item) => item.event_id));
+      setRegistrationStatuses(Object.fromEntries(current.map((item) => [item.event_id, item.status])));
+    });
+    return () => { active = false; };
+  }, [user?.id, verificationStatus]);
+
+  const categories = ['All Events', ...new Set(events.map(event=>event.category).filter(Boolean))];
 
   const filteredEvents = useMemo(() => {
     const now = new Date();
@@ -114,6 +129,7 @@ export default function EventsPage() {
 
     const byTimeframe = byCategory.filter((event) => {
       const eventDate = new Date(event.date || event.startDate || event.created_at || new Date());
+      if (selectedTimeframe === 'All dates') return true;
       return selectedTimeframe === 'Upcoming' ? eventDate >= now : eventDate < now;
     });
 
@@ -137,22 +153,27 @@ export default function EventsPage() {
 
   const featuredEvent = filteredEvents.find((event) => event.featured) || filteredEvents[0];
   const otherEvents = filteredEvents.filter((event) => event.id !== (featuredEvent?.id ?? ''));
+  const registrationAction = (event) => registrationStatuses[event.id] === 'waitlisted' ? 'Leave waitlist' : interestedIds.includes(event.id) ? 'Cancel registration' : 'Register for event';
   async function markInterested(event) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return setEventMessage('Please sign in before marking interest.');
-    const { error } = await supabase.from('event_registrations').upsert({ event_id: event.id, user_id: session.user.id, status: 'registered' }, { onConflict: 'event_id,user_id' });
-    if (error && error.code !== '23505') return setEventMessage(error.message);
+    if (verificationStatus !== 'verified') return setEventMessage('Complete alumni verification before registering for events.');
+    const { data, error } = await supabase.rpc('manage_event_registration', { p_event_id: event.id, p_action: 'register' });
+    if (error) return setEventMessage(error.message);
     setInterestedIds((current) => current.includes(event.id) ? current : [...current, event.id]);
     setEvents((current) => current.map((item) => item.id === event.id && !interestedIds.includes(event.id) ? { ...item, interest_count: (item.interest_count || 0) + 1 } : item));
-    setEventMessage('You are registered for this event.');
+    setRegistrationStatuses((current) => ({ ...current, [event.id]: data.status }));
+    setEventMessage(data.status === 'waitlisted' ? 'This event is full. You have been added to the waitlist.' : 'You are registered for this event.');
   }
 
   async function removeInterest(event) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return setEventMessage('Please sign in to manage your interests.');
-    const { error } = await supabase.from('event_registrations').update({ status: 'cancelled' }).eq('event_id', event.id).eq('user_id', session.user.id);
+    if (verificationStatus !== 'verified') return setEventMessage('Complete alumni verification before managing event registration.');
+    const { error } = await supabase.rpc('manage_event_registration', { p_event_id: event.id, p_action: 'cancel' });
     if (error) return setEventMessage(error.message);
     setInterestedIds((current) => current.filter((id) => id !== event.id));
+    setRegistrationStatuses((current) => { const next = { ...current }; delete next[event.id]; return next; });
     setEvents((current) => current.map((item) => item.id === event.id && interestedIds.includes(event.id) ? { ...item, interest_count: Math.max(0, (item.interest_count || 0) - 1) } : item));
     setEventMessage('Your event registration has been cancelled.');
   }
@@ -192,7 +213,7 @@ export default function EventsPage() {
 
             <div className="filter-group">
               <h2>Timeframe</h2>
-              {['Upcoming', 'Past Events'].map((period) => (
+              {['All dates', 'Upcoming', 'Past Events'].map((period) => (
                 <label key={period} className="filter-option">
                   <input
                     type="radio" name="event-timeframe"
@@ -219,6 +240,8 @@ export default function EventsPage() {
           <main className="events-main-panel">
             {loading ? (
               <div className="events-empty-state">Loading upcoming events...</div>
+            ) : loadError ? (
+              <div className="events-empty-state" role="alert"><p>{loadError}</p><button onClick={()=>setReloadKey(key=>key+1)}>Try again</button></div>
             ) : !featuredEvent ? (
               <div className="events-empty-state">No events match your current filters.</div>
             ) : (
@@ -233,7 +256,7 @@ export default function EventsPage() {
                     <p className="event-place-line">{featuredEvent.location}</p>
                     <p className="event-description">{featuredEvent.description}</p>
                     <div className="cta-row">
-                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{interestedIds.includes(featuredEvent.id) ? 'Cancel registration' : 'Register for event'}</button>
+                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{registrationAction(featuredEvent)}</button>
                       <button type="button" className="secondary-action" onClick={() => setSelectedEvent(featuredEvent)}>View details</button>
                     </div>
                   </div>
@@ -256,11 +279,10 @@ export default function EventsPage() {
               </>
             )}
 
-            <div className="other-session-list">
+            {featuredEvent && otherEvents.length > 2 && <div className="other-session-list">
               <h3>Other upcoming sessions</h3>
 
-              {otherEvents.slice(2).length > 0 ? (
-                otherEvents.slice(2).map((event) => (
+              {otherEvents.slice(2).map((event) => (
                   <div key={event.id} className="session-item">
                     <div className="session-date">
                       <span>{formatMonthDay(event.date).split(' ')[0]}</span>
@@ -274,19 +296,12 @@ export default function EventsPage() {
                       ›
                     </button>
                   </div>
-                ))
-              ) : (
-                <div className="session-item muted-item">
-                  <div className="session-summary">
-                    <h4>No additional sessions available.</h4>
-                  </div>
-                </div>
-              )}
-            </div>
+                ))}
+            </div>}
           </main>
         </div>
         {eventMessage && <p className="event-feedback">{eventMessage}</p>}
-        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} registered alumni</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{interestedIds.includes(selectedEvent.id) ? 'Cancel registration' : 'Register for event'}</button></div></section></div>}
+        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} registered alumni</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{registrationAction(selectedEvent)}</button></div></section></div>}
       </div>
     </div>
   );

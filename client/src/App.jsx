@@ -10,6 +10,10 @@ import Login from './Login.jsx';
 import Profile from './components/Profile.jsx';
 import AccountSettings from './components/AccountSettings.jsx';
 import Chat from './components/Chat.jsx';
+import Directory from './components/Directory.jsx';
+import AlumniProfilePage from './components/AlumniProfilePage.jsx';
+import NotificationsPage from './components/NotificationsPage.jsx';
+import './components/ProfileNavigation.css';
 
 const Icon = ({ name, size = 18 }) => {
   const icons = {
@@ -84,8 +88,28 @@ function App() {
   const [accountProfile, setAccountProfile] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [homeData, setHomeData] = useState({ news: [], events: [], metrics: null });
+  const [siteConfig, setSiteConfig] = useState({ allowOpenSignups: true });
+  const [homeError, setHomeError] = useState('');
+  const [messageContact, setMessageContact] = useState(null);
 
   const [activeTab, setActiveTab] = useState('Home');
+
+  async function loadPublicContent() {
+    setHomeError('');
+    const results = await Promise.allSettled([
+      fetch('/api/config').then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch('/api/home').then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch('/api/events').then((response) => response.ok ? response.json() : Promise.reject()),
+    ]);
+    const [config, home, eventData] = results;
+    if (config.status === 'fulfilled') setSiteConfig(config.value);
+    if (home.status === 'fulfilled') setHomeData((current) => ({ ...current, ...home.value }));
+    if (eventData.status === 'fulfilled') setHomeData((current) => ({ ...current, events: eventData.value.events || [] }));
+    if (results.some((result) => result.status === 'rejected')) setHomeError('Some public content could not be loaded. You can retry without refreshing the page.');
+  }
+
+  useEffect(() => { loadPublicContent(); }, []);
 
   useEffect(() => {
     supabase.auth
@@ -96,8 +120,9 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') setSettingsOpen(true);
     });
 
     return () => subscription.unsubscribe();
@@ -111,6 +136,7 @@ function App() {
   const unreadNotifications = notifications.filter((notification) => !notification.read_at).length;
 
   function notificationText(notification) {
+    if (notification._source === 'account_notifications') return notification.subject || notification.message;
     if (notification.kind === 'comment') return `${notification.actor_name} commented on your post.`;
     const reaction = notification.reaction === 'celebrate' ? 'celebrated' : notification.reaction === 'support' ? 'supported' : 'liked';
     return `${notification.actor_name} ${reaction} your post.`;
@@ -126,24 +152,31 @@ function App() {
 
   async function openNotification(notification) {
     if (!notification.read_at) {
-      const { error } = await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', notification.id);
+      const { error } = await supabase.from(notification._source || 'notifications').update({ read_at: new Date().toISOString() }).eq('id', notification.id);
       if (!error) setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
     }
     setNotificationsOpen(false);
-    setActiveTab('Feed');
+    const destination = notification._source !== 'account_notifications' ? 'Feed'
+      : notification.kind?.includes('event') ? 'Events'
+      : notification.kind?.includes('opportun') || notification.kind?.includes('application') ? 'Opportunities'
+      : notification.kind?.includes('message') ? 'Directory'
+      : notification.kind?.includes('gallery') ? 'Gallery'
+      : 'Home';
+    setActiveTab(destination);
   }
 
   async function markAllNotificationsRead() {
     if (!user?.id || unreadNotifications === 0) return;
     const readAt = new Date().toISOString();
-    const { error } = await supabase.from('notifications').update({ read_at: readAt }).eq('recipient_id', user.id).is('read_at', null);
-    if (!error) setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || readAt })));
+    const results = await Promise.all(['notifications','account_notifications'].map((table) => supabase.from(table).update({ read_at: readAt }).eq('recipient_id', user.id).is('read_at', null)));
+    if (!results.some((result) => result.error)) setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || readAt })));
   }
 
   const navItems = [
     'Home',
     'About NDDU',
     'Feed',
+    'Directory',
     'Opportunities',
     'Events',
     'Gallery',
@@ -204,8 +237,14 @@ function App() {
 
     let active = true;
     const loadNotifications = async () => {
-      const { data, error } = await supabase.from('notifications').select('*').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(30);
-      if (active && !error) setNotifications(data || []);
+      const [community, account] = await Promise.all([
+        supabase.from('notifications').select('*').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(100),
+        supabase.from('account_notifications').select('*').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(100),
+      ]);
+      if (active && !community.error && !account.error) setNotifications([
+        ...(community.data || []).map((item) => ({ ...item, _source: 'notifications' })),
+        ...(account.data || []).map((item) => ({ ...item, _source: 'account_notifications' })),
+      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 200));
     };
     loadNotifications();
 
@@ -213,7 +252,7 @@ function App() {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
       loadNotifications
-    ).subscribe();
+    ).on('postgres_changes', { event: '*', schema: 'public', table: 'account_notifications', filter: `recipient_id=eq.${user.id}` }, loadNotifications).subscribe();
 
     return () => {
       active = false;
@@ -243,54 +282,33 @@ function App() {
       title: 'Find Classmates',
       text: 'Reconnect with fellow NDDU graduates.',
       action: 'Browse directory',
+      tab: 'Directory',
     },
     {
       icon: 'briefcase',
       title: 'Explore Careers',
       text: 'Discover opportunities shared by alumni.',
       action: 'View jobs',
+      tab: 'Opportunities',
     },
     {
       icon: 'pin',
       title: 'Attend Events',
       text: 'Join reunions, homecoming, and gatherings.',
       action: 'See events',
+      tab: 'Events',
     },
     {
       icon: 'chart',
       title: 'View Memories',
       text: 'Explore photos shared by the alumni community.',
       action: 'Open gallery',
+      tab: 'Gallery',
     },
   ];
 
-  const feedItems = [
-    {
-      category: 'University News',
-      time: '2 hours ago',
-      title: 'New Research Wing Inauguration',
-      text: 'The university has officially opened the state-of-the-art research facility dedicated to sustainable energy...',
-    },
-    {
-      category: 'Alumni Spotlight',
-      time: 'Yesterday',
-      title: "Class of '15 CEO featured in Fortune",
-      text: 'Jane Doe discusses her journey from the computer science labs to leading a tech giant...',
-    },
-  ];
-
-  const events = [
-    {
-      date: 'MAY 24',
-      title: 'Annual Homecoming Gala',
-      place: 'Main Campus',
-    },
-    {
-      date: 'JUN 02',
-      title: 'Networking Mixer: NY',
-      place: 'Midtown Lounge',
-    },
-  ];
+  const feedItems = homeData.news.map((item) => ({ category: item.category || 'University News', time: new Date(item.created_at).toLocaleDateString(), title: item.title, text: item.description || item.text || '' }));
+  const events = homeData.events.slice(0, 4).map((item) => ({ date: new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), title: item.title, place: item.location || 'Details to follow' }));
 
   if (authView === 'register') {
     return (
@@ -304,7 +322,7 @@ function App() {
   if (authView === 'login') {
     return (
       <Login
-        onRegister={() => setAuthView('register')}
+        onRegister={() => siteConfig.allowOpenSignups && setAuthView('register')}
         onClose={() => setAuthView(null)}
       />
     );
@@ -395,6 +413,7 @@ function App() {
                         ))}
                       </ul>
                     )}
+                    <button className="notification-view-all" type="button" onClick={()=>{setNotificationsOpen(false);setActiveTab('Notifications')}}>View all notifications</button>
                   </section>
                 )}
               </div>
@@ -425,7 +444,7 @@ function App() {
 
                 {accountMenuOpen && (
                   <div className="account-menu">
-                    <header className="account-menu-profile">
+                    <button className="account-menu-profile" onClick={()=>{setAccountMenuOpen(false);setActiveTab('Profile')}}>
                       <AccountAvatar menu />
 
                       <span>
@@ -433,7 +452,7 @@ function App() {
                         <strong>{accountFirstName}</strong>
                         <small>{user.email}</small>
                       </span>
-                    </header>
+                    </button>
 
                     <div
                       className={`account-verification-status ${
@@ -516,28 +535,36 @@ function App() {
 
               <button
                 className="header-auth-button header-auth-button-primary"
-                onClick={() => setAuthView('register')}
+                onClick={() => siteConfig.allowOpenSignups && setAuthView('register')}
+                disabled={!siteConfig.allowOpenSignups}
               >
-                Join now
+                {siteConfig.allowOpenSignups ? 'Join now' : 'Registration closed'}
               </button>
             </>
           )}
         </div>
       </header>
 
-      <main id="top">
+      <main id="top" tabIndex="-1">
         {activeTab === 'About NDDU' ? (
           <AboutNDDU />
         ) : activeTab === 'Feed' ? (
-          <Feed user={user} profile={accountProfile} />
+          <Feed user={user} profile={accountProfile} verificationStatus={verificationStatus} onMessage={setMessageContact} onViewProfile={()=>setActiveTab('Profile')} />
+        ) : activeTab === 'Profile' && user ? (
+          <AlumniProfilePage user={user} profile={accountProfile} onProfileChange={setAccountProfile} />
+        ) : activeTab === 'Notifications' && user ? (
+          <NotificationsPage notifications={notifications} onOpen={openNotification} onMarkAll={markAllNotificationsRead} onChange={setNotifications} />
+        ) : activeTab === 'Directory' ? (
+          <Directory user={user} verificationStatus={verificationStatus} onMessage={setMessageContact} />
         ) : activeTab === 'Events' ? (
-          <Events />
+          <Events user={user} verificationStatus={verificationStatus} />
         ) : activeTab === 'Gallery' ? (
           <Gallery user={user} profile={accountProfile} verificationStatus={verificationStatus} />
         ) : activeTab === 'Opportunities' ? (
-          <Opportunities user={user} profile={accountProfile} />
+          <Opportunities user={user} profile={accountProfile} verificationStatus={verificationStatus} />
         ) : (
           <>
+            {homeError && <div className="public-load-error" role="alert"><span>{homeError}</span><button onClick={loadPublicContent}>Retry</button></div>}
             <section className="hero-section">
               <div
                 className="hero-background"
@@ -566,9 +593,10 @@ function App() {
                 <div className="hero-actions">
                   <button
                     className="dark-button"
-                    onClick={() => setAuthView('register')}
+                    onClick={() => siteConfig.allowOpenSignups && setAuthView('register')}
+                    disabled={!siteConfig.allowOpenSignups}
                   >
-                    Create Your Alumni Profile
+                    {siteConfig.allowOpenSignups ? 'Create Your Alumni Profile' : 'Registration is currently closed'}
                   </button>
 
                   {!user && (
@@ -615,7 +643,7 @@ function App() {
 
                       <p>{item.text}</p>
 
-                      <button className="card-link">
+                      <button className="card-link" onClick={() => setActiveTab(item.tab)}>
                         {item.action}
                         <Icon name="arrow" size={17} />
                       </button>
@@ -638,22 +666,22 @@ function App() {
 
                 <div className="impact-grid">
                   <div>
-                    <strong>12,000+</strong>
+                    <strong>{homeData.metrics?.alumni?.toLocaleString() || '—'}</strong>
                     <span>NDDU alumni</span>
                   </div>
 
                   <div>
-                    <strong>180+</strong>
+                    <strong>{homeData.metrics?.photos?.toLocaleString() || '—'}</strong>
                     <span>Alumni photos shared</span>
                   </div>
 
                   <div>
-                    <strong>40+</strong>
+                    <strong>{homeData.metrics?.opportunities?.toLocaleString() || '—'}</strong>
                     <span>Career opportunities</span>
                   </div>
 
                   <div>
-                    <strong>12</strong>
+                    <strong>{homeData.metrics?.events?.toLocaleString() || '—'}</strong>
                     <span>Upcoming gatherings</span>
                   </div>
                 </div>
@@ -669,7 +697,7 @@ function App() {
                 </div>
 
                 <div className="feed-list">
-                  {feedItems.map((item) => (
+                  {feedItems.length ? feedItems.map((item) => (
                     <article
                       className="feed-card"
                       key={item.title}
@@ -683,7 +711,7 @@ function App() {
 
                       <p>{item.text}</p>
                     </article>
-                  ))}
+                  )) : <p>No published university news yet.</p>}
                 </div>
               </section>
 
@@ -697,7 +725,7 @@ function App() {
                 </div>
 
                 <div className="events-list">
-                  {events.map((event) => (
+                  {events.length ? events.map((event) => (
                     <article
                       className="event-card"
                       key={event.title}
@@ -711,39 +739,32 @@ function App() {
                         {event.place}
                       </p>
                     </article>
-                  ))}
+                  )) : <p>No upcoming published events yet.</p>}
                 </div>
               </section>
 
               <section className="panel story-panel">
                 <div className="section-title">
-                  <h2>Alumni stories</h2>
+                  <h2>Share your alumni story</h2>
 
-                  <button className="text-button small">
-                    Read More
+                  <button className="text-button small" onClick={() => setActiveTab('Feed')}>
+                    Open community feed
                   </button>
                 </div>
 
                 <article className="story-card">
-                  <img
-                    src="https://i.pravatar.cc/120?img=47"
-                    alt="Robert Chen"
-                  />
-
                   <div>
                     <blockquote>
-                      “My degree was the foundation...”
+                      Your experience can encourage the next generation of NDDU alumni.
                     </blockquote>
 
                     <p className="author">
-                      — Robert Chen, Class of ’08
+                      Share a verified community update
                     </p>
                   </div>
 
                   <p className="quote-copy">
-                    “The alumni community helped me stay connected
-                    to NDDU friendships and milestones long after
-                    graduation.”
+                    Publish a career milestone, reunion memory, or message of support in the alumni feed.
                   </p>
                 </article>
               </section>
@@ -767,9 +788,10 @@ function App() {
 
                 <button
                   className="dark-button"
-                  onClick={() => setAuthView('register')}
+                  onClick={() => siteConfig.allowOpenSignups && setAuthView('register')}
+                  disabled={!siteConfig.allowOpenSignups}
                 >
-                  Create Your Alumni Profile
+                  {siteConfig.allowOpenSignups ? 'Create Your Alumni Profile' : 'Registration is currently closed'}
                 </button>
               </section>
             </div>
@@ -782,7 +804,7 @@ function App() {
           <strong>NDDU ALUMNICONNECT</strong>
 
           <p>
-            © 2024 Alumni Management System. All rights reserved.
+            © {new Date().getFullYear()} Alumni Management System. All rights reserved.
           </p>
         </div>
 
@@ -840,7 +862,7 @@ function App() {
         />
       )}
 
-      {user && <Chat user={user} />}
+      {user && verificationStatus === 'verified' && <Chat user={user} contact={messageContact} onContactHandled={() => setMessageContact(null)} />}
     </div>
   );
 }

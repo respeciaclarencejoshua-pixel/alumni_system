@@ -1,0 +1,14 @@
+.post-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 600px) {
+  .post-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .post-actions button {
+    padding-inline: 6px;
+    font-size: .86rem;
+  }
+}

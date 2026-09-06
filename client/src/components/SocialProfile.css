@@ -1,0 +1,6 @@
+.mention-social-summary{display:flex;flex-wrap:wrap;justify-content:center;gap:5px 12px;margin:18px 0 4px;padding:13px;border-radius:8px;color:#315d46;background:#f1f7f3;font-size:.82rem}
+.mention-social-summary strong{color:#074b28}.mention-social-summary small{width:100%;color:#687d70}
+.mention-profile-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px;padding-top:18px;border-top:1px solid #dce7df}
+.mention-profile-actions button{min-height:46px;border:1px solid #9eb9a6;border-radius:7px;color:#075c2d;background:#eef6f0;font:inherit;font-weight:850;cursor:pointer}
+.mention-profile-actions button:disabled{cursor:not-allowed;opacity:.65}.mention-profile-actions .mention-message{border-color:#075c2d;color:#fff;background:#075c2d}
+@media(max-width:430px){.mention-profile-actions{grid-template-columns:1fr}}

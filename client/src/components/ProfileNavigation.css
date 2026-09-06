@@ -1,0 +1,4 @@
+.account-menu-profile{width:100%;text-align:left;cursor:pointer}
+.account-menu-profile:hover,.account-menu-profile:focus-visible{background:#edf6ef}
+.profile-card-clickable{cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.profile-card-clickable:hover,.profile-card-clickable:focus-visible{border-color:#7da789;outline:3px solid rgba(253,200,0,.35);box-shadow:0 9px 24px rgba(1,43,9,.12);transform:translateY(-1px)}

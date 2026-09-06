@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import AdminPortal from "./components/admin/AdminPortal.jsx";
 import './App.css';
+import './components/AlumniDesignSystem.css';
 const isAdminRoute = window.location.pathname.replace(/\/+$/, '') === '/admin';
 
 ReactDOM.createRoot(document.getElementById('root')).render(

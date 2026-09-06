@@ -80,7 +80,7 @@ export default function Register({ onLogin, onClose }) {
       setLoading(false);
       return;
     }
-    if (!(password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password))) {
+    if (!(password.length >= 12 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password))) {
       setError('Your password does not meet all requirements.');
       setLoading(false);
       return;
@@ -214,18 +214,18 @@ export default function Register({ onLogin, onClose }) {
               value={form.password}
               onChange={handleChange}
               autoComplete="new-password"
-              minLength={8}
+              minLength={12}
               required
             /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>{showPassword ? 'Hide' : 'Show'}</button></span>
           </label>
 
           <label>
             Confirm Password
-            <span className="password-input-wrap"><input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" value={form.confirmPassword} onChange={handleChange} autoComplete="new-password" minLength={8} required /><button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={showConfirmPassword}>{showConfirmPassword ? 'Hide' : 'Show'}</button></span>
+            <span className="password-input-wrap"><input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" value={form.confirmPassword} onChange={handleChange} autoComplete="new-password" minLength={12} required /><button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={showConfirmPassword}>{showConfirmPassword ? 'Hide' : 'Show'}</button></span>
             {form.confirmPassword && <small aria-live="polite" className={form.password === form.confirmPassword ? 'password-match good' : 'password-match'}>{form.password === form.confirmPassword ? 'Passwords match' : 'Passwords do not match'}</small>}
           </label>
 
-          <div className="password-requirements" aria-label="Password requirements"><strong>Password requirements</strong><ul><li className={form.password.length >= 8 ? 'met' : ''}>At least 8 characters</li><li className={/[A-Z]/.test(form.password) ? 'met' : ''}>One uppercase letter</li><li className={/[a-z]/.test(form.password) ? 'met' : ''}>One lowercase letter</li><li className={/\d/.test(form.password) ? 'met' : ''}>One number</li></ul></div>
+            <div className="password-requirements" aria-label="Password requirements"><strong>Password requirements</strong><ul><li className={form.password.length >= 12 ? 'met' : ''}>At least 12 characters</li><li className={/[A-Z]/.test(form.password) ? 'met' : ''}>One uppercase letter</li><li className={/[a-z]/.test(form.password) ? 'met' : ''}>One lowercase letter</li><li className={/\d/.test(form.password) ? 'met' : ''}>One number</li></ul></div>
 
           <fieldset className="registration-roles">
             <legend>How will you use AlumniConnect?</legend>

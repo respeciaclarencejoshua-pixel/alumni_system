@@ -12,6 +12,9 @@ export default function AdminPortal() {
   const [password, setPassword] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [access, setAccess] = useState(null);
+  const [mfaChallenge, setMfaChallenge] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
   const handleCaptchaToken = useCallback((token) => setCaptchaToken(token), []);
 
   useEffect(() => {
@@ -20,12 +23,25 @@ export default function AdminPortal() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return mounted && setState('signed-out');
       try {
-        await adminApi('/api/admin/me');
-        if (mounted) setState('authorized');
+        const result = await adminApi('/api/admin/me');
+        if (mounted) { setAccess(result); setState('authorized'); }
       } catch (error) {
         if (mounted) {
           setMessage(error.message);
-          setState(error.message.includes('Administrator access') ? 'forbidden' : 'signed-out');
+          if (error.code === 'MFA_REQUIRED') {
+            const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+            const factor = factors?.totp?.find((item) => item.status === 'verified');
+            if (factorsError || !factor) {
+              setMessage(factorsError?.message || 'MFA is required, but this account has no verified authenticator. Ask a super administrator to temporarily disable enforcement so you can enroll.');
+              setState('forbidden');
+            } else {
+              const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: factor.id });
+              if (challengeError) { setMessage(challengeError.message); setState('forbidden'); }
+              else { setMfaChallenge({ factorId: factor.id, challengeId: challenge.id }); setMessage('Enter the code from your authenticator app.'); setState('mfa-required'); }
+            }
+          } else {
+            setState(['ADMIN_REQUIRED', 'ADMIN_NOT_VERIFIED'].includes(error.code) ? 'forbidden' : 'signed-out');
+          }
         }
       }
     }
@@ -58,7 +74,18 @@ export default function AdminPortal() {
     setState('signed-out');
   }
 
-  if (state === 'authorized') return <AdminDashboard onSignOut={signOut} />;
+  async function verifyMfa(event) {
+    event.preventDefault();
+    if (!/^\d{6}$/.test(mfaCode) || !mfaChallenge) return setMessage('Enter a valid six-digit authenticator code.');
+    setState('loading');
+    const { error } = await supabase.auth.mfa.verify({ factorId: mfaChallenge.factorId, challengeId: mfaChallenge.challengeId, code: mfaCode });
+    if (error) { setMessage(error.message); setMfaCode(''); setState('mfa-required'); return; }
+    try { const result = await adminApi('/api/admin/me'); setAccess(result); setState('authorized'); }
+    catch (accessError) { setMessage(accessError.message); setState('forbidden'); }
+  }
+
+  if (state === 'authorized') return <AdminDashboard onSignOut={signOut} access={access} />;
+  if (state === 'mfa-required') return <div className="admin-access"><form onSubmit={verifyMfa}><p className="admin-access-kicker">Additional verification</p><h1>Authenticator code</h1><p>{message}</p><label>Six-digit code<input autoFocus inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ''))} required /></label><button type="submit" disabled={mfaCode.length !== 6}>Verify and continue</button><button type="button" onClick={signOut}>Cancel and sign out</button></form></div>;
   if (state === 'loading') return <div className="admin-access"><p>Checking administrator access…</p></div>;
   if (state === 'forbidden') return <div className="admin-access"><section><p className="admin-access-kicker">Access restricted</p><h1>Administrator access required</h1><p>Your sign-in worked, but this account has not been approved for the admin portal. Ask an existing administrator to assign it the <strong>admin</strong> or <strong>staff</strong> role.</p><p className="admin-access-error">{message}</p><button onClick={signOut}>Sign out</button></section></div>;
 

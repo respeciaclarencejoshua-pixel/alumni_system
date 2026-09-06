@@ -79,6 +79,8 @@ a:focus-visible {
    ========================================================= */
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   background: var(--color-white);
 }
@@ -239,6 +241,7 @@ a:focus-visible {
 
 main {
   width: min(1440px, 100%);
+  flex: 1 0 auto;
   margin: 0 auto;
   padding: 0 46px 44px;
 }
@@ -747,6 +750,8 @@ main {
 
 .site-footer {
   display: flex;
+  width: 100%;
+  flex: 0 0 auto;
   min-height: 120px;
   align-items: center;
   justify-content: space-between;
@@ -772,6 +777,9 @@ main {
 }
 
 .footer-links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   text-decoration: underline;
   text-decoration-color: var(--color-accent);
   text-underline-offset: 4px;
@@ -986,6 +994,11 @@ main {
   }
 }
 
+@media (max-width: 600px) {
+  .site-footer { gap: 20px; padding: 28px 20px; }
+  .footer-links { display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 4px 20px; }
+}
+
 .hero-login-button {
   min-height: 48px;
   padding: 11px 24px;
@@ -996,3 +1009,4 @@ main {
 }
 
 .hero-login-button:hover { background: rgb(255 255 255 / 12%); }
+.directory-page{width:min(1120px,calc(100% - 32px));margin:42px auto 80px}.directory-page>header h1{margin:6px 0;color:#012b09;font-size:clamp(2rem,5vw,3.5rem)}.directory-page>header>p:last-child{color:#586b5e}.directory-search{display:grid;gap:7px;max-width:480px;margin:28px 0;color:#183d27;font-size:.8rem;font-weight:750}.directory-search input{padding:12px 14px;border:1px solid #bdccbf;border-radius:7px;font:inherit}.directory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.directory-grid article{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:16px;border:1px solid #d4e0d6;border-radius:9px;background:#fff;box-shadow:0 5px 16px rgba(1,43,9,.05)}.directory-grid article>b{display:grid;width:44px;height:44px;place-items:center;border-radius:50%;background:#e6f1e9;color:#075c20}.directory-grid h2{margin:0;color:#163d25;font-size:.95rem}.directory-grid p{margin:4px 0 0;color:#687a6d;font-size:.72rem;text-transform:capitalize}.directory-grid button,.directory-state button{padding:8px 11px;border:1px solid #a9c0ae;border-radius:6px;color:#075c20;font-weight:750}.directory-state{grid-column:1/-1;padding:28px;border:1px dashed #c8d6cb;border-radius:8px;background:#f7faf8;color:#52695a;text-align:center}@media(max-width:600px){.directory-grid article{grid-template-columns:auto 1fr}.directory-grid article button{grid-column:1/-1;width:100%}}

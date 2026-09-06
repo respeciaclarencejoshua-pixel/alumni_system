@@ -155,3 +155,4 @@
     flex-direction: column;
   }
 }
+.account-password-form{margin-top:22px;padding-top:20px;border-top:1px solid #d8e2da}.account-password-form h2{margin:0 0 4px;color:#123b25;font-size:1rem}.account-password-form>p{margin:0 0 14px;color:#66766b;font-size:.76rem}.account-password-form label{display:grid;gap:6px;margin:10px 0;color:#294b35;font-size:.75rem;font-weight:700}.account-password-form input{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bdccbf;border-radius:6px}.account-password-form button{width:100%;margin-top:8px}

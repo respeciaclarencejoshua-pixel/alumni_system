@@ -1,0 +1,364 @@
+:root {
+  --alumni-ink: #132f20;
+  --alumni-muted: #5e7366;
+  --alumni-green-950: #012b09;
+  --alumni-green-800: #075c2d;
+  --alumni-green-700: #08723b;
+  --alumni-gold: #fdc800;
+  --alumni-canvas: #f4f7f5;
+  --alumni-surface: #fff;
+  --alumni-border: #d5e1d8;
+  --alumni-radius-sm: 8px;
+  --alumni-radius: 12px;
+  --alumni-radius-lg: 16px;
+  --alumni-shadow: 0 6px 22px rgb(1 43 9 / 7%);
+  --alumni-shadow-raised: 0 18px 48px rgb(1 43 9 / 16%);
+  --alumni-page: 1200px;
+}
+
+.app-shell { color: var(--alumni-ink); background: var(--alumni-canvas); }
+.institution-bar { min-height: 32px; padding-inline: clamp(18px,4vw,48px); background: #0a5a18; }
+.topbar { position: sticky; z-index: 40; top: 0; min-height: 80px; padding: 11px clamp(18px,4vw,48px); box-shadow: 0 1px 0 rgb(255 255 255 / 10%); }
+.brand img { width: 52px; height: 52px; }
+.brand em { font-size: .86rem; font-weight: 700; }
+.brand strong { font-size: 1.08rem; }
+.main-nav { gap: clamp(12px,1.7vw,25px); }
+.main-nav button { padding-inline: 4px; font-size: .76rem; font-weight: 750; letter-spacing: .01em; }
+.main-nav button.active::after { bottom: -11px; height: 3px; border-radius: 3px 3px 0 0; }
+.account-trigger { min-height: 46px; }
+
+main#top { max-width: 1440px; }
+.feed-layout,.directory-page,.events-page-content,.gallery-page,.notifications-page,.opportunity-hero>div,.opportunity-shell,.about-nddu-content,.about-nddu-hero-content { box-sizing: border-box; width: min(var(--alumni-page),calc(100% - 48px)); max-width: var(--alumni-page); margin-inline: auto; }
+.directory-page,.events-page-content,.gallery-page,.notifications-page { margin-top: 0; }
+.feed-layout,.directory-page,.events-page-content,.gallery-page,.notifications-page { padding-top: clamp(38px,5vw,58px); padding-bottom: 80px; }
+.feed-layout { grid-template-columns: 280px minmax(0,820px); justify-content: center; gap: 28px; }
+.events-page-shell,.opportunities-page,.alumni-profile-page { background: var(--alumni-canvas); }
+.alumni-profile-page { padding-inline: max(24px,calc((100vw - var(--alumni-page))/2)); }
+.profile-cover-pattern { background-image: linear-gradient(90deg,rgb(1 43 9 / 88%),rgb(1 43 9 / 58%)),url('https://www.nddu.edu.ph/wp-content/uploads/2022/03/Slide-2-e1731164886823.png'); background-position:center 40%; background-size:cover; }
+
+.feed-heading,.directory-page>header,.events-page-title-block,.gallery-header,.notifications-page>header { margin-bottom: 28px; }
+.feed-heading>p,.directory-page>header>.eyebrow,.gallery-header>div>p,.notifications-page>header>div>p,.events-page-title-block::before { color: var(--alumni-green-700); font-size: .76rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.events-page-title-block::before { display: block; margin-bottom: 7px; content: 'NDDU Alumni Community'; }
+.feed-heading h1,.directory-page>header h1,.events-page-title-block h1,.gallery-header h1,.notifications-page h1 { margin: 4px 0 8px; color: var(--alumni-green-950); font-family: var(--font-display); font-size: clamp(2.2rem,4vw,3.15rem); line-height: 1.08; letter-spacing: -.035em; }
+.feed-heading span,.directory-page>header>p:last-child,.events-page-title-block p,.gallery-header span,.notifications-page>header span { max-width: 760px; color: var(--alumni-muted); font-size: 1.02rem; line-height: 1.65; }
+
+.profile-card,.post-creator,.feed-post,.feed-empty,.directory-grid.enhanced>article,.events-date-toolbar,.events-sidebar,.featured-event-card,.mini-event-card,.other-session-list,.gallery-card,.gallery-state,.gallery-my-submissions,.notifications-page article,.profile-page-grid section,.profile-tab-content,.profile-tabs,.opportunity-sidebar,.opportunity-card { border-color: var(--alumni-border); border-radius: var(--alumni-radius); background: var(--alumni-surface); box-shadow: var(--alumni-shadow); }
+.post-creator,.feed-post,.directory-grid.enhanced>article,.opportunity-card,.gallery-card,.mini-event-card { transition: border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.feed-post:hover,.directory-grid.enhanced>article:hover,.gallery-card:hover,.mini-event-card:hover { border-color: #b5cabb; box-shadow: 0 12px 30px rgb(1 43 9 / 10%); }
+
+.creator-input textarea,.comment-composer input,.directory-controls input,.directory-controls select,.opportunity-tools input,.opportunity-tools select,.opportunity-dialog input,.opportunity-dialog select,.opportunity-dialog textarea,.events-date-toolbar input,.events-date-toolbar select,.location-input,.gallery-submit input,.gallery-submit select,.gallery-submit textarea,.profile-edit-grid input,.profile-composer textarea,.report-dialog input,.report-dialog select,.report-dialog textarea { box-sizing: border-box; min-height: 46px; border: 1px solid #afc2b3; border-radius: var(--alumni-radius-sm); color: var(--alumni-ink); background: #fff; font: inherit; }
+.creator-input textarea:focus,.comment-composer input:focus,.directory-controls input:focus,.directory-controls select:focus,.opportunity-tools input:focus,.opportunity-tools select:focus,.opportunity-dialog input:focus,.opportunity-dialog select:focus,.opportunity-dialog textarea:focus,.events-date-toolbar input:focus,.events-date-toolbar select:focus,.location-input:focus,.gallery-submit input:focus,.gallery-submit select:focus,.gallery-submit textarea:focus,.profile-edit-grid input:focus,.profile-composer textarea:focus,.report-dialog input:focus,.report-dialog select:focus,.report-dialog textarea:focus { border-color: var(--alumni-green-700); outline: 3px solid rgb(253 200 0 / 28%); outline-offset: 1px; }
+
+.opportunity-hero button,.gallery-header-actions button:last-child,.profile-identity button,.profile-tab-content>header>button,.notifications-page>header button,.dark-button,.primary-action,.post-button { border: 1px solid var(--alumni-green-800); border-radius: var(--alumni-radius-sm); color: #fff; background: var(--alumni-green-800); box-shadow: none; font-weight: 800; }
+.opportunity-hero button { border-color: var(--alumni-gold); color: var(--alumni-green-950); background: var(--alumni-gold); }
+.opportunity-hero button:hover { background: #ffda3e; }
+.gallery-header-actions button:first-child,.secondary-action,.clear-event-filters,.directory-more,.feed-load-more { border: 1px solid #9eb6a4; border-radius: var(--alumni-radius-sm); color: var(--alumni-green-800); background: #fff; font-weight: 800; }
+button:not(:disabled) { transition: color .15s ease,background-color .15s ease,border-color .15s ease,box-shadow .15s ease,transform .15s ease; }
+button:not(:disabled):active { transform: translateY(1px); }
+
+.hero-section .dark-button,.join-section .dark-button {
+  border-color: var(--alumni-gold);
+  color: var(--alumni-green-950);
+  background: var(--alumni-gold);
+  box-shadow: 0 9px 24px rgb(0 25 8 / 24%);
+}
+.hero-section .dark-button:hover,.join-section .dark-button:hover { border-color: #ffda3e; background: #ffda3e; }
+.hero-section .dark-button:focus-visible,.join-section .dark-button:focus-visible { outline-color: #fff; box-shadow: 0 0 0 4px rgb(253 200 0 / 30%); }
+.hero-section .dark-button:disabled,.join-section .dark-button:disabled { border-color: #d4b94e; color: #53604f; background: #e6d58a; }
+
+/* Home story callout */
+.story-panel { grid-column: 1 / -1; }
+.story-panel .section-title { margin-bottom: 16px; }
+.story-panel .section-title h2 { font-size: 1.45rem; }
+.story-panel .section-title .text-button { min-height: 42px; padding: 8px 14px; border: 1px solid #9eb6a4; border-radius: var(--alumni-radius-sm); color: var(--alumni-green-800); background: #fff; text-decoration: none; }
+.story-panel .section-title .text-button:hover { border-color: var(--alumni-green-800); background: #edf6ef; }
+.story-card { position: relative; grid-template-columns: minmax(0,1.15fr) minmax(280px,.85fr); align-items: center; min-height: 180px; gap: 40px; overflow: hidden; padding: clamp(26px,4vw,42px); border-color: var(--alumni-border); border-radius: var(--alumni-radius); background: linear-gradient(125deg,#fff 0%,#f5faf6 70%); box-shadow: var(--alumni-shadow); }
+.story-card::before { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; content: ''; background: var(--alumni-gold); }
+.story-card>div { min-width: 0; }
+.story-card blockquote { max-width: 650px; margin: 0 0 10px; color: var(--alumni-green-950); font-family: var(--font-display); font-size: clamp(1.55rem,3vw,2.35rem); font-weight: 800; line-height: 1.2; letter-spacing: -.025em; }
+.story-card .author { color: var(--alumni-green-700); font-size: .82rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.story-card .quote-copy { grid-column: auto; margin: 0; padding: 20px 0 20px 30px; border-left: 1px solid var(--alumni-border); color: #425d4b; font-family: var(--font-body); font-size: 1rem; font-style: normal; line-height: 1.7; }
+
+.feed-message,.opportunity-message,.gallery-message,.directory-feedback,.event-feedback,.profile-page-message,.settings-message { border: 1px solid #b8d4c0; border-radius: var(--alumni-radius-sm); color: #075c2d; background: #edf8f0; }
+.feed-empty,.directory-state,.no-opportunities,.events-empty-state,.gallery-state,.notifications-empty,.profile-empty { border: 1px dashed #bbcec0; border-radius: var(--alumni-radius); color: var(--alumni-muted); background: #fbfdfb; }
+
+.opportunity-hero { padding-block: clamp(58px,7vw,84px); border-radius: 0 0 var(--alumni-radius-lg) var(--alumni-radius-lg); }
+.opportunity-hero h1 { font-size: clamp(3rem,6vw,4.7rem); }
+.opportunity-shell { grid-template-columns: 240px minmax(0,1fr); gap: 30px; padding-top: 38px; padding-bottom: 80px; }
+.events-page-shell { margin-inline: calc(50% - 50vw); }
+.events-page-title-block h1 { color: var(--alumni-green-950); }
+.events-sidebar { border-radius: var(--alumni-radius); }
+.gallery-page>.gallery-header { position: relative; max-width: none; align-items: end; margin-bottom: 100px; }
+.gallery-grid { gap: 18px; }
+.gallery-card { border-radius: var(--alumni-radius); }
+.gallery-card-action { border: 0; border-top: 1px solid var(--alumni-border); color: var(--alumni-green-800); background: #f7faf8; }
+.gallery-card-action:hover,.gallery-card-action:focus-visible { color: #fff; background: var(--alumni-green-800); }
+.directory-person { width: 100%; }
+.directory-grid.enhanced>article { padding: 18px; }
+.notifications-page { min-height: 70vh; }
+
+/* Shared module masthead: every alumni destination now opens with the same
+   recognizable hierarchy while retaining its own content and actions. */
+.feed-page { min-height: calc(100vh - 112px); margin-inline: calc(50% - 50vw); background: var(--alumni-canvas); }
+.feed-layout { padding-top: 34px; background: transparent; }
+.directory-page,.events-page-content,.gallery-page,.notifications-page { padding-top: 0; }
+.alumni-module-hero,
+.directory-page>header,
+.events-page-title-block,
+.gallery-header,
+.notifications-page>header {
+  box-sizing: border-box;
+  min-height: 300px;
+  margin-inline: calc(50% - 50vw);
+  margin-bottom: 34px;
+  padding: 54px max(24px,calc((100vw - var(--alumni-page))/2));
+  color: #fff;
+  background-image:
+    linear-gradient(90deg,rgb(1 43 9 / 94%),rgb(1 43 9 / 68%)),
+    url('https://www.nddu.edu.ph/wp-content/uploads/2022/03/Slide-2-e1731164886823.png');
+  background-position: center 40%;
+  background-size: cover;
+}
+.about-nddu-hero,.opportunity-hero { min-height: 300px; }
+.opportunity-hero { box-sizing: border-box; height: 300px; margin-inline: calc(50% - 50vw); padding-block: 34px; border-radius: 0; background-image: linear-gradient(90deg,rgb(1 43 9 / 94%),rgb(1 43 9 / 68%)),url('https://www.nddu.edu.ph/wp-content/uploads/2022/03/Slide-2-e1731164886823.png'); background-position:center 40%; background-size:cover; }
+.opportunity-hero>div { display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: flex-start; }
+.opportunity-hero h1 { font-size: clamp(2.75rem,4vw,3.35rem); line-height: .98; }
+.opportunity-hero p:not(.opportunity-kicker) { margin: 14px 0 16px; font-size: 1rem; line-height: 1.5; }
+.opportunity-hero button { min-height: 44px; }
+.alumni-module-hero>div { width: min(var(--alumni-page),100%); margin-inline: auto; }
+.feed-heading>div>p,.directory-page>header>.eyebrow,.gallery-header>div>p,.notifications-page>header>div>p,.events-page-title-block::before { color: var(--alumni-gold); }
+.feed-heading h1,.directory-page>header h1,.events-page-title-block h1,.gallery-header h1,.notifications-page h1 { color: #fff; font-size: clamp(2.65rem,5vw,4rem); }
+.feed-heading span,.directory-page>header>p:last-child,.events-page-title-block p,.gallery-header span,.notifications-page>header span { display: block; color: #dceae0; }
+.gallery-header,.notifications-page>header { align-items: center; }
+.gallery-header-actions { position: absolute; right: max(24px,calc((100vw - var(--alumni-page))/2)); bottom: -72px; display: flex; align-self: center; gap: 10px; padding: 10px; border: 1px solid var(--alumni-border); border-radius: var(--alumni-radius); background: #fff; box-shadow: var(--alumni-shadow); }
+.gallery-header-actions button { min-height: 46px; padding-inline: 18px; }
+.gallery-header-actions button:first-child { border-color: #9eb6a4; color: var(--alumni-green-800); background: #fff; }
+.gallery-header-actions button:first-child:hover { border-color: var(--alumni-green-800); background: #edf6ef; }
+.gallery-header-actions button:last-child { border-color: var(--alumni-green-800); color: #fff; background: var(--alumni-green-800); }
+.gallery-header-actions button:last-child:hover { border-color: var(--alumni-green-950); background: var(--alumni-green-950); }
+.notifications-page>header button { border-color: var(--alumni-gold); color: var(--alumni-green-950); background: var(--alumni-gold); }
+.directory-controls,.events-date-toolbar { margin-top: -58px; position: relative; z-index: 2; padding: 18px; border: 1px solid var(--alumni-border); border-radius: var(--alumni-radius); background: #fff; box-shadow: var(--alumni-shadow-raised); }
+.gallery-grid,.gallery-my-submissions { position: relative; }
+.gallery-page { display: flex; flex-direction: column; }
+.gallery-page>.gallery-header { order: 0; }
+.gallery-page>.gallery-message { order: 1; }
+.gallery-page>.gallery-my-submissions { order: 2; }
+.gallery-page>.gallery-browser { order: 3; }
+.gallery-page>.gallery-grid,.gallery-page>.gallery-state { order: 4; }
+.gallery-my-submissions { margin: 0 0 28px; padding: 24px; border-top: 4px solid var(--alumni-gold); }
+.gallery-my-submissions>header { padding-bottom: 16px; border-bottom: 1px solid var(--alumni-border); }
+.gallery-my-submissions>header h2 { color: var(--alumni-green-950); font-size: 1.45rem; }
+.gallery-my-submissions>header button { border-radius: var(--alumni-radius-sm); }
+.gallery-my-submissions article { padding: 16px; border-radius: var(--alumni-radius-sm); background: #fbfdfb; }
+.gallery-my-submissions article>button { color: #a1261d; border-color: #e3aaa5; background: #fff; }
+.gallery-my-submissions article>button:hover { color: #fff; background: #a1261d; }
+.submission-status { padding: 5px 9px; letter-spacing: .04em; }
+.gallery-submission-empty { display: grid; justify-items: start; gap: 5px; margin-top: 16px; padding: 24px; border: 1px dashed #b9cdbf; border-radius: var(--alumni-radius-sm); color: var(--alumni-muted); background: #f8fbf9; }
+.gallery-submission-empty strong { color: var(--alumni-green-950); font-size: 1.05rem; }
+.gallery-submission-empty button { margin-top: 10px; min-height: 42px; padding: 8px 14px; border-radius: var(--alumni-radius-sm); color: #fff; background: var(--alumni-green-800); font-weight: 800; }
+.gallery-browser { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; padding-bottom: 20px; border-bottom: 1px solid var(--alumni-border); }
+.gallery-browser>div:first-child p { margin: 0; color: var(--alumni-green-700); font-size: .74rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.gallery-browser h2 { margin: 4px 0; color: var(--alumni-green-950); font-size: clamp(1.7rem,3vw,2.25rem); }
+.gallery-browser>div:first-child span { color: var(--alumni-muted); font-size: .86rem; }
+.gallery-browser-controls { display: grid; grid-template-columns: minmax(250px,360px) 190px auto; align-items: end; gap: 9px; }
+.gallery-browser-controls label { display: grid; gap: 6px; color: #315943; font-size: .76rem; font-weight: 800; }
+.gallery-browser-controls input,.gallery-browser-controls select { box-sizing: border-box; min-height: 46px; padding: 9px 12px; border: 1px solid #afc2b3; border-radius: var(--alumni-radius-sm); color: var(--alumni-ink); background: #fff; font: inherit; }
+.gallery-browser-controls input:focus,.gallery-browser-controls select:focus { border-color: var(--alumni-green-700); outline: 3px solid rgb(253 200 0 / 28%); }
+.gallery-browser-controls button,.gallery-state button { min-height: 46px; padding: 9px 14px; border: 1px solid #9eb6a4; border-radius: var(--alumni-radius-sm); color: var(--alumni-green-800); background: #fff; font-weight: 800; }
+.gallery-card-image { position: relative; }
+.gallery-card-image>span { position: absolute; top: 12px; left: 12px; padding: 6px 10px; border-radius: 999px; color: var(--alumni-green-950); background: var(--alumni-gold); font-size: .72rem; font-weight: 850; }
+.gallery-card.featured { border-color: #d5b83e; }
+.gallery-submit>header p { margin: 5px 0 0; color: var(--alumni-muted); font-size: .82rem; }
+.gallery-form-intro { display: grid!important; grid-template-columns: 1fr!important; gap: 4px!important; margin: 18px 22px 4px!important; padding: 14px!important; border-left: 4px solid var(--alumni-gold); border-radius: 6px; color: #365844!important; background: #f5f9f6; }
+.gallery-form-intro b { color: var(--alumni-green-950); }
+.gallery-file-field { padding: 14px; border: 1px dashed #9eb6a4; border-radius: var(--alumni-radius-sm); background: #fafcfb; }
+.gallery-submit label>small { color: var(--alumni-muted); font-size: .7rem; font-weight: 500; }
+.gallery-consent { display: grid; gap: 10px; margin: 18px 22px; padding: 14px; border: 1px solid var(--alumni-border); border-radius: var(--alumni-radius-sm); background: #fbfdfb; }
+.gallery-consent legend { padding: 0 6px; color: var(--alumni-green-950); font-size: .78rem; font-weight: 850; }
+.gallery-story-page { min-height: calc(100vh - 112px); margin-inline: calc(50% - 50vw); padding-bottom: 80px; color: var(--alumni-ink); background: var(--alumni-canvas); }
+.gallery-story-page-header { min-height: 250px; box-sizing: border-box; padding: 34px max(24px,calc((100vw - var(--alumni-page))/2)) 48px; color: #fff; background-image: linear-gradient(90deg,rgb(1 43 9 / 96%),rgb(1 43 9 / 72%)),url('https://www.nddu.edu.ph/wp-content/uploads/2022/03/Slide-2-e1731164886823.png'); background-position: center 40%; background-size: cover; }
+.gallery-story-page-header>button { min-height: 42px; margin-bottom: 28px; padding: 8px 14px; border: 1px solid rgb(255 255 255 / 55%); border-radius: var(--alumni-radius-sm); color: #fff; background: rgb(255 255 255 / 9%); font-weight: 800; }
+.gallery-story-page-header>button:hover { background: rgb(255 255 255 / 18%); }
+.gallery-story-page-header p,.gallery-related>p { margin: 0; color: var(--alumni-gold); font-size: .76rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.gallery-story-page-header h1 { max-width: 850px; margin: 6px 0 12px; color: #fff; font-size: clamp(2.3rem,5vw,4rem); line-height: 1.08; overflow-wrap: anywhere; }
+.gallery-story-page-header span { color: #dceae0; }
+.gallery-story-page-layout { display: grid; width: min(var(--alumni-page),calc(100% - 48px)); grid-template-columns: minmax(0,1.35fr) minmax(340px,.65fr); align-items: start; gap: 24px; margin: -28px auto 0; }
+.gallery-story-page-layout>figure,.gallery-story-page-copy { overflow: hidden; margin: 0; border: 1px solid var(--alumni-border); border-radius: var(--alumni-radius); background: #fff; box-shadow: var(--alumni-shadow); }
+.gallery-story-page-layout>figure img { display: block; width: 100%; max-height: 680px; object-fit: contain; background: #061108; }
+.gallery-story-page-layout>figure figcaption { padding: 13px 18px; color: var(--alumni-muted); font-size: .82rem; }
+.gallery-story-page-copy { padding: 28px; }
+.story-page-label { margin: 0; color: var(--alumni-green-700); font-size: .75rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.story-page-description { margin: 13px 0 26px; color: #314f3c; font-size: 1.04rem; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gallery-story-page-copy dl { margin: 0; }
+.gallery-story-page-copy dl div { padding: 12px 0; border-top: 1px solid var(--alumni-border); }
+.gallery-story-page-copy dt { color: var(--alumni-muted); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.gallery-story-page-copy dd { margin: 3px 0 0; color: var(--alumni-green-950); font-weight: 750; overflow-wrap: anywhere; }
+.gallery-related { width: min(var(--alumni-page),calc(100% - 48px)); margin: 42px auto 0; }
+.gallery-related h2 { margin: 5px 0 17px; color: var(--alumni-green-950); font-size: 1.65rem; }
+.gallery-related>div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 15px; }
+.gallery-related button { display: grid; grid-template-columns: 86px minmax(0,1fr); align-items: center; gap: 13px; overflow: hidden; padding: 10px; border: 1px solid var(--alumni-border); border-radius: var(--alumni-radius-sm); color: var(--alumni-ink); background: #fff; text-align: left; }
+.gallery-related button:hover { border-color: #9eb6a4; box-shadow: var(--alumni-shadow); }
+.gallery-related img { width: 86px; height: 70px; border-radius: 6px; object-fit: cover; }
+.gallery-related span { display: grid; gap: 5px; min-width: 0; }
+.gallery-related b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-related small { color: var(--alumni-muted); }
+.gallery-story-page.simple { padding: 34px 24px 72px; }
+.gallery-story-simple { width: min(900px,100%); margin: 0 auto; }
+.gallery-story-back { min-height: 42px; margin-bottom: 18px; padding: 8px 13px; border: 1px solid #9eb6a4; border-radius: var(--alumni-radius-sm); color: var(--alumni-green-800); background: #fff; font-weight: 800; }
+.gallery-story-back:hover { border-color: var(--alumni-green-800); background: #edf6ef; }
+.gallery-story-simple>figure { overflow: hidden; margin: 0; border-radius: var(--alumni-radius) var(--alumni-radius) 0 0; background: #102419; }
+.gallery-story-simple>figure img { display: block; width: 100%; max-height: 580px; object-fit: contain; }
+.gallery-story-simple>section { padding: clamp(22px,4vw,38px); border: 1px solid var(--alumni-border); border-top: 0; border-radius: 0 0 var(--alumni-radius) var(--alumni-radius); background: #fff; box-shadow: var(--alumni-shadow); }
+.gallery-story-simple h1 { margin: 6px 0 10px; color: var(--alumni-green-950); font-size: clamp(2rem,5vw,3rem); line-height: 1.15; overflow-wrap: anywhere; }
+.gallery-story-byline { margin: 0 0 24px; padding-bottom: 18px; border-bottom: 1px solid var(--alumni-border); color: var(--alumni-muted); line-height: 1.6; }
+.gallery-story-simple .story-page-description { margin: 0; color: #314f3c; font-size: 1.05rem; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gallery-story-people { margin: 24px 0 0; padding: 14px; border-radius: var(--alumni-radius-sm); color: #365844; background: #f3f8f4; }
+
+/* Directory cards */
+.directory-grid.enhanced { gap: 18px; }
+.directory-grid.enhanced>article { grid-template-columns: minmax(0,1fr); align-content: space-between; align-items: stretch; min-height: 158px; gap: 18px; padding: 20px; }
+.directory-grid.enhanced .directory-person { width: 100%; min-height: 72px; padding: 0; border: 0; border-radius: 0; }
+.directory-grid.enhanced .directory-person:hover { background: transparent; }
+.directory-person img,.directory-person>b { width: 68px; height: 68px; flex-basis: 68px; outline: 2px solid var(--alumni-gold); outline-offset: 2px; }
+.directory-person span { min-width: 0; }
+.directory-person h2 { color: var(--alumni-green-950); font-size: 1.08rem; line-height: 1.3; }
+.directory-person p { color: #365c45; font-size: .86rem; line-height: 1.45; }
+.directory-person small { color: var(--alumni-muted); font-size: .78rem; }
+.directory-actions { padding-top: 15px; border-top: 1px solid #e2eae4; }
+.directory-actions button { min-height: 44px; border-radius: var(--alumni-radius-sm); }
+.directory-actions button:hover { border-color: var(--alumni-green-800); background: #edf6ef; }
+.directory-actions button:first-child:hover { color: #fff; background: var(--alumni-green-950); }
+
+/* Opportunities: compact navigation and a clearer task-focused reading flow. */
+.opportunity-shell { display: block; }
+.opportunity-sidebar { position: static; display: flex; width: 100%; height: auto; min-height: 0; flex-direction: row; align-self: auto; align-items: center; justify-content: flex-start; gap: 8px; box-sizing: border-box; margin-bottom: 28px; padding: 0; overflow-x: auto; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.opportunity-sidebar h2 { flex: 0 0 auto; margin: 0 10px 0 0; color: var(--alumni-green-950); font-size: .92rem; }
+.opportunity-sidebar button { min-height: 42px; flex: 0 0 auto; padding-inline: 15px; border: 1px solid #b9cdbf; border-radius: 999px; color: #315b44; background: #fff; white-space: nowrap; }
+.opportunity-sidebar button:hover,.opportunity-sidebar button:focus-visible { border-color: var(--alumni-green-700); background: #edf6ef; }
+.opportunity-sidebar button.active { border-color: var(--alumni-green-800); color: #fff; background: var(--alumni-green-800); box-shadow: 0 5px 14px rgb(7 92 45 / 18%); }
+.opportunity-content>header { align-items: center; padding: 4px 2px; }
+.opportunity-content>header h2 { font-size: clamp(2rem,3vw,2.6rem); }
+.opportunity-tools { grid-template-columns: minmax(280px,390px) 150px; }
+.opportunity-tools input,.opportunity-tools select { border-radius: var(--alumni-radius-sm); background-color: #fff; }
+.opportunity-list { gap: 18px; }
+.opportunity-card { border-color: #c7d8cb; border-radius: var(--alumni-radius); }
+.opportunity-card-top { padding: 24px 26px 20px; }
+.opportunity-icon { border-radius: var(--alumni-radius-sm); box-shadow: 0 5px 12px rgb(1 43 9 / 14%); }
+.opportunity-main h3 { margin-top: 7px; font-size: 1.45rem; }
+.opportunity-description { max-width: 900px; color: #466451; }
+.opportunity-card-footer { min-height: 62px; padding: 10px 18px 10px 26px; }
+.view-opportunity { min-width: 180px; min-height: 42px; padding-inline: 16px; border: 1px solid var(--alumni-green-800); color: #fff; background: var(--alumni-green-800); text-align: center; }
+.view-opportunity:hover,.view-opportunity:focus-visible { color: #fff; background: var(--alumni-green-950); }
+.save-opportunity { border-color: #b7cbbb; }
+.opportunity-load-more { border-radius: var(--alumni-radius-sm); }
+
+/* Events: filters read left-to-right and results receive the full page width. */
+.events-layout { display: block; }
+.events-sidebar { position: static; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; margin-bottom: 24px; padding: 18px 20px; }
+.events-sidebar .filter-group { margin: 0; padding: 0 20px; border: 0; border-right: 1px solid var(--alumni-border); }
+.events-sidebar .filter-group:first-child { padding-left: 0; }
+.events-sidebar .filter-group:last-child { padding-right: 0; border-right: 0; }
+.events-sidebar .filter-group h2 { margin-bottom: 10px; color: var(--alumni-green-700); }
+.events-sidebar .filter-option { display: inline-grid; width: auto; margin: 0 12px 0 0; }
+.events-sidebar .location-input { min-height: 44px; border-radius: var(--alumni-radius-sm); background: #fff; }
+.events-main-panel { gap: 22px; }
+.events-empty-state { display: grid; min-height: 210px; place-content: center; justify-items: center; gap: 10px; padding: 36px; border-style: dashed; color: var(--alumni-muted); font-size: 1rem; }
+.events-empty-state::before { display: grid; width: 54px; height: 54px; place-items: center; content: '◫'; border-radius: 50%; color: var(--alumni-green-700); background: #e8f3eb; font-size: 1.45rem; }
+.events-empty-state p { margin: 0; }
+.events-empty-state button { min-height: 42px; padding: 8px 15px; border: 1px solid var(--alumni-green-800); border-radius: var(--alumni-radius-sm); color: #fff; background: var(--alumni-green-800); font-weight: 800; }
+.session-item.muted-item { grid-template-columns: minmax(0,1fr); }
+
+.opportunity-dialog,.gallery-submit,.profile-edit-dialog,.report-dialog,.directory-profile-dialog,.mention-profile-dialog,.event-details-modal>section,.settings-modal,.verification-modal { border: 1px solid var(--alumni-border); border-radius: var(--alumni-radius-lg); box-shadow: var(--alumni-shadow-raised); }
+.opportunity-modal,.gallery-submit-backdrop,.profile-edit-backdrop,.report-backdrop,.directory-profile-backdrop,.mention-profile-backdrop,.event-details-modal,.settings-backdrop,.verification-modal-backdrop { background: rgb(0 31 13 / 70%); backdrop-filter: blur(4px); }
+
+/* Viewport-safe event details dialog */
+.event-details-modal { z-index: 1600; place-items: center; box-sizing: border-box; padding: max(20px,env(safe-area-inset-top)) 18px max(20px,env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+.event-details-modal>section { display: block; width: min(760px,100%); max-height: calc(100dvh - 40px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.event-details-modal header { position: sticky; z-index: 4; top: 0; align-items: flex-start; padding: 22px 26px 18px; border-bottom: 1px solid var(--alumni-border); background: linear-gradient(135deg,#edf7f0,#fff); }
+.event-details-modal header>div { min-width: 0; }
+.event-details-modal header button { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; font-size: 1.55rem; }
+.event-details-modal h2 { overflow-wrap: anywhere; font-size: clamp(1.65rem,4vw,2.2rem); line-height: 1.15; }
+.event-details-image { height: clamp(180px,26vh,240px); }
+.event-details-body { padding: 22px 26px 30px; overflow-wrap: anywhere; }
+.public-event-map iframe { height: min(220px,28vh); }
+.event-countdown { margin-block: 20px; }
+
+.site-footer { width: 100%; box-sizing: border-box; margin-top: auto; }
+
+@media (max-width: 1100px) {
+  .topbar { flex-wrap: wrap; gap: 10px 20px; }
+  .main-nav { order: 3; width: 100%; overflow-x: auto; }
+  .main-nav button { min-height: 44px; }
+  .main-nav button.active::after { bottom: 0; }
+  .feed-layout { grid-template-columns: 250px minmax(0,1fr); }
+}
+
+@media (max-width: 850px) {
+  .feed-layout,.directory-page,.events-page-content,.gallery-page,.notifications-page,.opportunity-hero>div,.opportunity-shell,.about-nddu-content,.about-nddu-hero-content { width: min(100% - 32px,var(--alumni-page)); }
+  .feed-layout { grid-template-columns: 1fr; }
+  .feed-sidebar-left,.opportunity-sidebar { position: static; }
+  .opportunity-content>header { align-items: stretch; }
+  .events-layout { grid-template-columns: 1fr; }
+  .events-sidebar { display: grid; grid-template-columns: repeat(3,1fr); gap: 0; }
+  .filter-group { margin: 0; border: 0; }
+  .story-card { grid-template-columns: 1fr; gap: 20px; }
+  .story-card .quote-copy { padding: 18px 0 0; border-top: 1px solid var(--alumni-border); border-left: 0; }
+  .gallery-browser { align-items: stretch; flex-direction: column; }
+  .gallery-browser-controls { width: 100%; grid-template-columns: 1fr 190px auto; }
+  .gallery-story-page-layout { grid-template-columns: 1fr; }
+  .gallery-related>div { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 600px) {
+  .institution-bar { display: none; }
+  .topbar { min-height: 70px; padding: 9px 14px; }
+  .brand img { width: 44px; height: 44px; }
+  .brand em { max-width: 190px; overflow: hidden; font-size: .72rem; text-overflow: ellipsis; }
+  .brand strong { font-size: .94rem; }
+  .header-actions { margin-left: auto; }
+  .account-trigger>span:not(.account-avatar),.account-trigger>i { display: none; }
+  .account-trigger { padding: 3px; }
+  .main-nav { gap: 5px; margin: 0; }
+  .main-nav button { padding: 0 10px; font-size: .7rem; }
+  .feed-layout,.directory-page,.events-page-content,.gallery-page,.notifications-page,.opportunity-hero>div,.opportunity-shell,.about-nddu-content,.about-nddu-hero-content { width: calc(100% - 24px); padding-top: 28px; padding-bottom: 52px; }
+  .feed-heading h1,.directory-page>header h1,.events-page-title-block h1,.gallery-header h1,.notifications-page h1 { font-size: 2rem; }
+  .events-sidebar { grid-template-columns: 1fr; }
+  .events-sidebar .filter-group { padding: 15px 0; border-right: 0; border-bottom: 1px solid var(--alumni-border); }
+  .events-sidebar .filter-group:first-child { padding-top: 0; }
+  .events-sidebar .filter-group:last-child { padding-bottom: 0; border-bottom: 0; }
+  .events-date-toolbar { align-items: stretch; flex-direction: column; padding: 14px; }
+  .date-select-group { display: grid; grid-template-columns: 1fr 1fr; }
+  .gallery-header { align-items: flex-start; }
+  .gallery-page>.gallery-header { margin-bottom: 104px; }
+  .gallery-header-actions { right: 12px; bottom: -82px; left: 12px; width: auto; box-sizing: border-box; }
+  .gallery-header-actions button { flex: 1; padding-inline: 10px; }
+  .gallery-browser-controls { grid-template-columns: 1fr; }
+  .gallery-story-page-header { min-height: 220px; padding: 26px 18px 42px; }
+  .gallery-story-page-layout,.gallery-related { width: calc(100% - 24px); }
+  .gallery-story-page-copy { padding: 21px; }
+  .gallery-story-page.simple { padding: 18px 12px 52px; }
+  .gallery-story-simple>figure img { max-height: 55vh; }
+  .opportunity-hero { height: auto; min-height: 300px; padding-block: 36px; }
+  .opportunity-hero h1 { font-size: 2.55rem; }
+  .opportunity-shell { width: calc(100% - 24px); padding-inline: 0; }
+  .opportunity-sidebar { margin-bottom: 18px; }
+  .opportunity-sidebar h2 { display: none; }
+  .opportunity-content>header { gap: 16px; }
+  .opportunity-tools { grid-template-columns: 1fr; }
+  .opportunity-card-top { padding: 18px 16px; }
+  .opportunity-card-footer { padding: 13px 16px; }
+  .view-opportunity { width: 100%; }
+  .alumni-profile-page { padding-inline: 12px; }
+  .profile-card,.post-creator,.feed-post,.directory-grid.enhanced>article,.events-date-toolbar,.events-sidebar,.gallery-card,.gallery-my-submissions,.opportunity-card { border-radius: 10px; }
+  .event-details-modal { align-items: end; padding: max(10px,env(safe-area-inset-top)) 0 0; }
+  .event-details-modal>section { width: 100%; max-height: calc(100dvh - max(10px,env(safe-area-inset-top))); border-radius: 16px 16px 0 0; }
+  .event-details-modal header { padding: 18px 18px 15px; }
+  .event-details-body { padding: 18px 18px calc(24px + env(safe-area-inset-bottom)); }
+  .event-countdown>div { grid-template-columns: repeat(2,1fr); gap: 14px; }
+  .alumni-module-hero,.directory-page>header,.events-page-title-block,.gallery-header,.notifications-page>header { min-height: 210px; margin-bottom: 24px; padding: 38px 18px; }
+  .directory-controls,.events-date-toolbar { margin-top: -42px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { scroll-behavior: auto!important; transition-duration: .01ms!important; animation-duration: .01ms!important; animation-iteration-count: 1!important; }
+}
