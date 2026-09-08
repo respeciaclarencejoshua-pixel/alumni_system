@@ -15,12 +15,12 @@ function loadTurnstile() {
   });
 }
 
-export default function TurnstileCaptcha({ onToken, resetKey }) {
+export default function TurnstileCaptcha({ onToken, resetKey, enabled = true }) {
   const containerRef = useRef(null);
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   useEffect(() => {
-    if (!siteKey || !containerRef.current) return undefined;
+    if (!enabled || !siteKey || !containerRef.current) return undefined;
     let active = true; let widgetId;
     loadTurnstile().then(() => {
       if (!active || !containerRef.current) return;
@@ -32,8 +32,9 @@ export default function TurnstileCaptcha({ onToken, resetKey }) {
       });
     }).catch(() => onToken(''));
     return () => { active = false; if (widgetId !== undefined && window.turnstile) window.turnstile.remove(widgetId); };
-  }, [siteKey, resetKey, onToken]);
+  }, [enabled, siteKey, resetKey, onToken]);
 
+  if (!enabled) return null;
   if (!siteKey) return <p className="captcha-config-error">CAPTCHA is not configured. Add the Turnstile site key to the client environment.</p>;
   return <div className="captcha-box"><div ref={containerRef} /><small>Protected by Cloudflare Turnstile</small></div>;
 }

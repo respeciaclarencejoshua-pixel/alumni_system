@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
+import CommunityServices from './components/CommunityServices.jsx';
+import BatchGroups from './components/BatchGroups.jsx';
 import AboutNDDU from './components/AboutNDDU.jsx';
 import Opportunities from './components/Opportunities';
 import Events from './components/Events.jsx';
 import Gallery from './components/Gallery.jsx';
+import './components/HomeShowcase.css';
 import Register from './Register.jsx';
 import Login from './Login.jsx';
 import Profile from './components/Profile.jsx';
@@ -101,11 +104,13 @@ function App() {
       fetch('/api/config').then((response) => response.ok ? response.json() : Promise.reject()),
       fetch('/api/home').then((response) => response.ok ? response.json() : Promise.reject()),
       fetch('/api/events').then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch('/api/gallery').then((response) => response.ok ? response.json() : Promise.reject()),
     ]);
-    const [config, home, eventData] = results;
+    const [config, home, eventData, galleryData] = results;
     if (config.status === 'fulfilled') setSiteConfig(config.value);
     if (home.status === 'fulfilled') setHomeData((current) => ({ ...current, ...home.value }));
     if (eventData.status === 'fulfilled') setHomeData((current) => ({ ...current, events: eventData.value.events || [] }));
+    if (galleryData.status === 'fulfilled') setHomeData((current) => ({ ...current, gallery: galleryData.value.photos || [] }));
     if (results.some((result) => result.status === 'rejected')) setHomeError('Some public content could not be loaded. You can retry without refreshing the page.');
   }
 
@@ -156,6 +161,12 @@ function App() {
       if (!error) setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
     }
     setNotificationsOpen(false);
+    if (notification.kind === 'batch_announcement' || notification.kind === 'system_announcement') {
+      setAnnouncementTarget({id:notification.announcement_id,batchId:notification.batch_id,key:Date.now()});
+      setActiveTab(notification.kind === 'batch_announcement' ? 'Alumni groups' : 'Announcements');
+      window.scrollTo({top:0});
+      return;
+    }
     const destination = notification._source !== 'account_notifications' ? 'Feed'
       : notification.kind?.includes('event') ? 'Events'
       : notification.kind?.includes('opportun') || notification.kind?.includes('application') ? 'Opportunities'
@@ -253,9 +264,11 @@ function App() {
       { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
       loadNotifications
     ).on('postgres_changes', { event: '*', schema: 'public', table: 'account_notifications', filter: `recipient_id=eq.${user.id}` }, loadNotifications).subscribe();
+    const notificationTimer=setInterval(()=>{if(!document.hidden)loadNotifications();},15000);
 
     return () => {
       active = false;
+      clearInterval(notificationTimer);
       supabase.removeChannel(channel);
     };
   }, [user?.id]);
@@ -307,7 +320,14 @@ function App() {
     },
   ];
 
-  const feedItems = homeData.news.map((item) => ({ category: item.category || 'University News', time: new Date(item.created_at).toLocaleDateString(), title: item.title, text: item.description || item.text || '' }));
+  const [announcementTarget,setAnnouncementTarget] = useState(null);
+  const [batchChat, setBatchChat] = useState(null);
+  const [galleryStoryId, setGalleryStoryId] = useState(null);
+  const [showAllStories, setShowAllStories] = useState(false);
+  const feedItems = [
+    ...homeData.news.map((item) => ({ key: `news-${item.id || item.title}`, category: item.category || 'University News', created_at: item.created_at, title: item.title, text: item.description || item.text || '' })),
+    ...(homeData.gallery || []).map((item) => ({ key: `gallery-${item.id}`, galleryId: item.id, category: item.category || 'Alumni story', created_at: item.created_at, title: item.title, text: item.description || '', image: item.url, author: item.author_name })),
+  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const events = homeData.events.slice(0, 4).map((item) => ({ date: new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), title: item.title, place: item.location || 'Details to follow' }));
 
   if (authView === 'register') {
@@ -367,10 +387,10 @@ function App() {
           {navItems.map((item) => (
             <button
               key={item}
-              className={activeTab === item ? 'active' : ''}
+              className={activeTab === item || (item === 'Directory' && activeTab === 'Alumni groups') ? 'active' : ''}
               onClick={() => setActiveTab(item)}
             >
-              {item}
+              {item === 'Feed' ? 'Community' : item}
             </button>
           ))}
         </nav>
@@ -378,6 +398,23 @@ function App() {
         <div className="header-actions">
           {user ? (
             <>
+              <button
+                type="button"
+                className="icon-button announcements-button"
+                aria-label="Official announcements"
+                title="Official announcements"
+                onClick={() => {
+                  setNotificationsOpen(false);
+                  setAccountMenuOpen(false);
+                  setActiveTab('Announcements');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 9h4l11-5v16L8 15H4V9Z" />
+                  <path d="M8 9v6l2 6H6l-2-6M22 9v6" />
+                </svg>
+              </button>
               <div className="notification-wrap">
                 <button
                   aria-label={unreadNotifications ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
@@ -511,6 +548,15 @@ function App() {
                         <span>⚙</span>
                         Profile settings
                       </button>
+                      <button type="button" onClick={() => {
+                        setAccountMenuOpen(false);
+                        setNotificationsOpen(false);
+                        setActiveTab('Help & support');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}>
+                        <span aria-hidden="true">?</span>
+                        Help &amp; support
+                      </button>
                     </div>
 
                     <button
@@ -550,16 +596,22 @@ function App() {
           <AboutNDDU />
         ) : activeTab === 'Feed' ? (
           <Feed user={user} profile={accountProfile} verificationStatus={verificationStatus} onMessage={setMessageContact} onViewProfile={()=>setActiveTab('Profile')} />
+        ) : activeTab === 'Announcements' ? (
+          <CommunityServices key={`announcements-${announcementTarget?.key||''}`} initialTab="announcement" initialAnnouncementId={announcementTarget?.batchId?null:announcementTarget?.id} user={user} />
+        ) : activeTab === 'Alumni groups' ? (
+          <BatchGroups key={`batch-${announcementTarget?.key||''}`} initialGroupId={announcementTarget?.batchId} initialAnnouncementId={announcementTarget?.id} user={user} onBackToDirectory={() => {setAnnouncementTarget(null);setActiveTab('Directory');}} onOpenChat={setBatchChat} onMessage={setMessageContact} onOpenHelp={() => { setActiveTab('Help & support'); window.scrollTo({top:0}); }} />
+        ) : activeTab === 'Help & support' ? (
+          <CommunityServices key="help-page" initialTab="request" user={user} />
         ) : activeTab === 'Profile' && user ? (
           <AlumniProfilePage user={user} profile={accountProfile} onProfileChange={setAccountProfile} />
         ) : activeTab === 'Notifications' && user ? (
           <NotificationsPage notifications={notifications} onOpen={openNotification} onMarkAll={markAllNotificationsRead} onChange={setNotifications} />
         ) : activeTab === 'Directory' ? (
-          <Directory user={user} verificationStatus={verificationStatus} onMessage={setMessageContact} />
+          <Directory user={user} verificationStatus={verificationStatus} onMessage={setMessageContact} onOpenGroups={() => { setActiveTab('Alumni groups'); window.scrollTo({ top: 0 }); }} />
         ) : activeTab === 'Events' ? (
           <Events user={user} verificationStatus={verificationStatus} />
         ) : activeTab === 'Gallery' ? (
-          <Gallery user={user} profile={accountProfile} verificationStatus={verificationStatus} />
+          <Gallery user={user} profile={accountProfile} verificationStatus={verificationStatus} initialStoryId={galleryStoryId} onStoryOpened={() => setGalleryStoryId(null)} />
         ) : activeTab === 'Opportunities' ? (
           <Opportunities user={user} profile={accountProfile} verificationStatus={verificationStatus} />
         ) : (
@@ -687,31 +739,34 @@ function App() {
                 </div>
               </section>
 
-              <section className="panel feed-panel">
+              <section className="panel feed-panel home-showcase">
                 <div className="section-title">
-                  <h2>From NDDU</h2>
+                  <h2>News & alumni stories</h2>
 
-                  <button className="text-button small">
-                    View All
+                  <button className="text-button small" onClick={() => setShowAllStories(value => !value)} aria-expanded={showAllStories}>
+                    {showAllStories ? 'Show less' : 'View all'}
                   </button>
                 </div>
 
                 <div className="feed-list">
-                  {feedItems.length ? feedItems.map((item) => (
+                  {feedItems.length ? (showAllStories ? feedItems : feedItems.slice(0, 3)).map((item) => (
                     <article
                       className="feed-card"
-                      key={item.title}
+                      key={item.key}
                     >
+                      {item.image && <img className="home-showcase-image" src={item.image} alt={item.title} loading="lazy" />}
                       <div className="meta">
                         <span>{item.category}</span>
-                        <time>{item.time}</time>
+                        <time>{new Date(item.created_at).toLocaleDateString()}</time>
                       </div>
 
                       <h3>{item.title}</h3>
 
                       <p>{item.text}</p>
+                      {item.author && <small>Shared by {item.author}</small>}
+                      {item.galleryId && <button className="text-button small" onClick={() => { setGalleryStoryId(item.galleryId); setActiveTab('Gallery'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Read story →</button>}
                     </article>
-                  )) : <p>No published university news yet.</p>}
+                  )) : <p>No published news or alumni stories yet.</p>}
                 </div>
               </section>
 
@@ -862,7 +917,7 @@ function App() {
         />
       )}
 
-      {user && verificationStatus === 'verified' && <Chat user={user} contact={messageContact} onContactHandled={() => setMessageContact(null)} />}
+      {user && verificationStatus === 'verified' && <Chat user={user} profile={accountProfile} contact={messageContact} onContactHandled={() => setMessageContact(null)} batchContact={batchChat} onBatchHandled={() => setBatchChat(null)} />}
     </div>
   );
 }

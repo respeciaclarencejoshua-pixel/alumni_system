@@ -1,0 +1,20 @@
+.home-showcase .feed-card{display:flex;flex-direction:column;gap:12px;min-width:0;overflow:hidden}
+.home-showcase .home-showcase-image{display:block;width:100%;height:210px;object-fit:cover;border-radius:8px}
+.home-showcase .feed-card h3,.home-showcase .feed-card p{margin:0;overflow-wrap:anywhere}
+.home-showcase .feed-card p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:1.6}
+.home-showcase .feed-card small{color:#526b5b}
+.home-showcase .feed-card button{align-self:flex-start;min-height:44px}
+.home-announcements{grid-column:1/-1;padding:24px;background:white;border:1px solid #d5e2da;border-radius:12px;min-width:0}
+.home-announcements>header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.home-announcements>header p{margin:0 0 8px;font-size:12px;letter-spacing:.08em;font-weight:700;color:#07572b}
+.home-announcements h2{margin:0;font-size:24px;color:#173d28}
+.home-announcements button{min-height:44px;padding:10px 14px;border:1px solid #b6cdbf;border-radius:8px;background:white;color:#07572b;font:inherit;cursor:pointer}
+.home-announcement-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.home-announcement-list article{padding:18px;border:1px solid #d5e2da;border-radius:8px;min-width:0}
+.home-announcement-meta{display:flex;gap:12px;align-items:center;font-size:13px;color:#526b5b}
+.home-announcement-meta span{background:#fff3b0;color:#443900;border-radius:4px;padding:4px 8px}
+.home-announcement-list h3{font-size:18px;line-height:1.4;overflow-wrap:anywhere}
+.home-announcement-list summary{padding:10px 0;color:#07572b;cursor:pointer;font-weight:600}
+.home-announcement-list details p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.home-announcements button:focus-visible,.home-announcements summary:focus-visible{outline:3px solid #bb9200;outline-offset:3px}
+@media(max-width:800px){.home-announcement-list{grid-template-columns:1fr}.home-announcements{padding:18px}}

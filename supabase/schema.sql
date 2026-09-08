@@ -1378,6 +1378,14 @@ set payload = jsonb_set(
 )
 where resource_type = 'events'
   and coalesce(payload ->> 'status', '') = '';
+update public.admin_resources
+set payload = jsonb_set(
+  jsonb_set(payload, '{status}', '"published"'::jsonb, true),
+  '{publishedAt}', to_jsonb(coalesce(nullif(payload ->> 'publishedAt',''),created_at::text,now()::text)), true
+)
+where resource_type='events'
+  and lower(coalesce(payload ->> 'status','')) in ('published','active','approved')
+  and coalesce(payload ->> 'status','') <> 'published';
 drop policy if exists "Admins can create resources" on public.admin_resources;
 create policy "Admins can create resources" on public.admin_resources for insert to authenticated
 with check (auth.uid() = created_by and public.is_verified_admin());
@@ -1551,6 +1559,9 @@ begin
   if event_payload is null then raise exception 'This event is not available for registration.'; end if;
 
   if p_action='register' then
+    if coalesce(event_payload->>'registrationDeadline',event_payload->>'registration_deadline',event_payload->>'date','') <> ''
+      and coalesce(event_payload->>'registrationDeadline',event_payload->>'registration_deadline',event_payload->>'date')::timestamptz <= now()
+    then raise exception 'Registration for this event is closed.'; end if;
     maximum:=case when coalesce(event_payload->>'capacity','')~'^\d+$' then (event_payload->>'capacity')::integer else null end;
     select count(*) into active_count from public.event_registrations
       where event_id=p_event_id and status in('registered','attended');

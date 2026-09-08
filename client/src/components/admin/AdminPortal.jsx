@@ -4,6 +4,7 @@ import { adminApi } from '../../lib/adminApi.js';
 import AdminDashboard from './AdminDashboard.jsx';
 import './AdminPortal.css';
 import TurnstileCaptcha from '../TurnstileCaptcha.jsx';
+import { useCaptchaEnabled } from '../../hooks/usePublicConfig.js';
 
 export default function AdminPortal() {
   const [state, setState] = useState('loading');
@@ -12,6 +13,7 @@ export default function AdminPortal() {
   const [password, setPassword] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const captchaEnabled = useCaptchaEnabled();
   const [access, setAccess] = useState(null);
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [mfaCode, setMfaCode] = useState('');
@@ -54,12 +56,12 @@ export default function AdminPortal() {
     event.preventDefault();
     setState('loading');
     setMessage('');
-    if (!captchaToken) {
+    if (captchaEnabled && !captchaToken) {
       setMessage('Complete the bot-protection check before signing in.');
       setState('signed-out');
       return;
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } });
+    const { error } = await supabase.auth.signInWithPassword({ email, password, options: captchaEnabled ? { captchaToken } : {} });
     if (error) {
       setMessage(error.message);
       setCaptchaToken('');
@@ -89,5 +91,5 @@ export default function AdminPortal() {
   if (state === 'loading') return <div className="admin-access"><p>Checking administrator access…</p></div>;
   if (state === 'forbidden') return <div className="admin-access"><section><p className="admin-access-kicker">Access restricted</p><h1>Administrator access required</h1><p>Your sign-in worked, but this account has not been approved for the admin portal. Ask an existing administrator to assign it the <strong>admin</strong> or <strong>staff</strong> role.</p><p className="admin-access-error">{message}</p><button onClick={signOut}>Sign out</button></section></div>;
 
-  return <div className="admin-access"><form onSubmit={signIn}><p className="admin-access-kicker">AlumniConnect</p><h1>Admin sign in</h1><p>Use an approved administrator or staff account.</p>{message && <p className="admin-access-error">{message}</p>}<label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /></label><TurnstileCaptcha onToken={handleCaptchaToken} resetKey={captchaResetKey} /><button type="submit">Sign in securely</button></form></div>;
+  return <div className="admin-access"><form onSubmit={signIn}><p className="admin-access-kicker">AlumniConnect</p><h1>Admin sign in</h1><p>Use an approved administrator or staff account.</p>{message && <p className="admin-access-error">{message}</p>}<label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /></label><TurnstileCaptcha enabled={captchaEnabled} onToken={handleCaptchaToken} resetKey={captchaResetKey} /><button type="submit">Sign in securely</button></form></div>;
 }

@@ -153,11 +153,16 @@ export default function EventsPage({ user, verificationStatus }) {
 
   const featuredEvent = filteredEvents.find((event) => event.featured) || filteredEvents[0];
   const otherEvents = filteredEvents.filter((event) => event.id !== (featuredEvent?.id ?? ''));
-  const registrationAction = (event) => registrationStatuses[event.id] === 'waitlisted' ? 'Leave waitlist' : interestedIds.includes(event.id) ? 'Cancel registration' : 'Register for event';
+  const isRegistrationClosed = (event) => {
+    const closesAt = event.registrationDeadline || event.date;
+    return Boolean(closesAt && new Date(closesAt) <= new Date());
+  };
+  const registrationAction = (event) => registrationStatuses[event.id] === 'waitlisted' ? 'Leave waitlist' : interestedIds.includes(event.id) ? 'Cancel registration' : isRegistrationClosed(event) ? 'Registration closed' : 'Register for event';
   async function markInterested(event) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return setEventMessage('Please sign in before marking interest.');
     if (verificationStatus !== 'verified') return setEventMessage('Complete alumni verification before registering for events.');
+    if (isRegistrationClosed(event)) return setEventMessage('Registration for this event is closed.');
     const { data, error } = await supabase.rpc('manage_event_registration', { p_event_id: event.id, p_action: 'register' });
     if (error) return setEventMessage(error.message);
     setInterestedIds((current) => current.includes(event.id) ? current : [...current, event.id]);
@@ -256,7 +261,7 @@ export default function EventsPage({ user, verificationStatus }) {
                     <p className="event-place-line">{featuredEvent.location}</p>
                     <p className="event-description">{featuredEvent.description}</p>
                     <div className="cta-row">
-                      <button type="button" className="primary-action" onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{registrationAction(featuredEvent)}</button>
+                      <button type="button" className="primary-action" disabled={!interestedIds.includes(featuredEvent.id)&&isRegistrationClosed(featuredEvent)} onClick={() => interestedIds.includes(featuredEvent.id) ? removeInterest(featuredEvent) : markInterested(featuredEvent)}>{registrationAction(featuredEvent)}</button>
                       <button type="button" className="secondary-action" onClick={() => setSelectedEvent(featuredEvent)}>View details</button>
                     </div>
                   </div>
@@ -301,7 +306,7 @@ export default function EventsPage({ user, verificationStatus }) {
           </main>
         </div>
         {eventMessage && <p className="event-feedback">{eventMessage}</p>}
-        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p><EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} registered alumni</div><button className="primary-action" onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{registrationAction(selectedEvent)}</button></div></section></div>}
+        {selectedEvent && <div className="event-details-modal" role="presentation" onMouseDown={() => setSelectedEvent(null)}><section role="dialog" aria-modal="true" aria-label={selectedEvent.title} onMouseDown={(event) => event.stopPropagation()}><header><div><span>{selectedEvent.category || 'Event'}</span><h2>{selectedEvent.title}</h2></div><button type="button" onClick={() => setSelectedEvent(null)} aria-label="Close event details">×</button></header><div className="event-details-image"><EventVisual event={selectedEvent}/></div><div className="event-details-body"><p className="event-detail-date">{formatShortTime(selectedEvent.date)}{selectedEvent.endDate ? ` – ${formatShortTime(selectedEvent.endDate)}` : ''}</p><p className="event-place-line">⌖ {selectedEvent.location || 'Location to be announced'}</p>{selectedEvent.registrationDeadline&&<p className="event-place-line">Registration closes {formatShortTime(selectedEvent.registrationDeadline)}</p>}<EventLocationMap event={selectedEvent}/><EventCountdown startDate={selectedEvent.date} endDate={selectedEvent.endDate} /><h3>About this event</h3><p>{selectedEvent.description}</p><div className="event-interest-count">{selectedEvent.interest_count || 0} registered alumni{selectedEvent.capacity?` · ${selectedEvent.capacity} capacity`:''}</div><button className="primary-action" disabled={!interestedIds.includes(selectedEvent.id)&&isRegistrationClosed(selectedEvent)} onClick={() => interestedIds.includes(selectedEvent.id) ? removeInterest(selectedEvent) : markInterested(selectedEvent)}>{registrationAction(selectedEvent)}</button></div></section></div>}
       </div>
     </div>
   );

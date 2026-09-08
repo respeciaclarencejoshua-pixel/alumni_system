@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { supabase } from './lib/supabase.js';
 import { ACADEMIC_PROGRAMS, DEPARTMENTS, GRADUATION_YEARS, degreeForCourse } from './data/academics.js';
 import TurnstileCaptcha from './components/TurnstileCaptcha.jsx';
+import { useCaptchaEnabled } from './hooks/usePublicConfig.js';
 
 export default function Register({ onLogin, onClose }) {
   const [form, setForm] = useState({
@@ -29,6 +30,7 @@ export default function Register({ onLogin, onClose }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const captchaEnabled = useCaptchaEnabled();
   const handleCaptchaToken = useCallback((token) => setCaptchaToken(token), []);
 
   function handleChange(event) {
@@ -90,7 +92,7 @@ export default function Register({ onLogin, onClose }) {
       setLoading(false);
       return;
     }
-    if (!captchaToken) {
+    if (captchaEnabled && !captchaToken) {
       setError('Complete the bot-protection check before creating your account.');
       setLoading(false);
       return;
@@ -100,7 +102,7 @@ export default function Register({ onLogin, onClose }) {
       email,
       password,
       options: {
-        captchaToken,
+        ...(captchaEnabled ? { captchaToken } : {}),
         data: {
           first_name: firstName,
           last_name: lastName,
@@ -313,7 +315,7 @@ export default function Register({ onLogin, onClose }) {
 
           <label className="terms-consent"><input type="checkbox" name="acceptTerms" checked={form.acceptTerms} onChange={(event) => setForm((current) => ({ ...current, acceptTerms: event.target.checked }))} required /><span>I agree to the <a href="/#terms" target="_blank" rel="noreferrer">Terms of Service</a> and acknowledge the <a href="/#privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.</span></label>
 
-          <TurnstileCaptcha onToken={handleCaptchaToken} resetKey={captchaResetKey} />
+          <TurnstileCaptcha enabled={captchaEnabled} onToken={handleCaptchaToken} resetKey={captchaResetKey} />
 
           {error && <p className="form-error">{error}</p>}
 

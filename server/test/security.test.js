@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { app } from '../src/index.js';
+import { app, normalizeEventPayload, requiredAdminScope, toPublicEvent } from '../src/index.js';
 import { readFile } from 'node:fs/promises';
 
 let server;
@@ -45,6 +45,8 @@ test('database schema protects alumni community writes', async () => {
   assert.match(schema, /Anyone can view published events[\s\S]*payload ->> 'status' = 'published'/);
   assert.match(schema, /normalize_opportunity_author/);
   assert.match(schema, /create or replace function public\.manage_event_registration[\s\S]*for update[\s\S]*skip locked/);
+  assert.match(schema, /manage_event_registration[\s\S]*Registration for this event is closed/);
+  assert.match(schema, /lower\(coalesce\(payload ->> 'status',''\)\) in \('published','active','approved'\)/);
   assert.match(schema, /revoke insert, update, delete on public\.event_registrations from authenticated/);
   assert.match(schema, /revoke update on public\.direct_messages from authenticated[\s\S]*grant update \(read_at\)/);
   assert.match(schema, /create table if not exists public\.saved_opportunities/);
@@ -74,4 +76,57 @@ test('GIF proxy never exposes its server API key', async () => {
   if (response.status === 502) assert.equal(body.code, 'GIF_PROVIDER_ERROR');
   if (response.status === 503) assert.equal(body.code, 'GIFS_NOT_CONFIGURED');
   assert.equal(JSON.stringify(body).includes('GIPHY_API_KEY'), false);
+});
+
+test('admin resource routes require the owning permission scope', () => {
+  assert.equal(requiredAdminScope('/resources/events'), 'events');
+  assert.equal(requiredAdminScope('/resources/jobs'), 'opportunities');
+  assert.equal(requiredAdminScope('/resources/news'), 'moderation');
+  assert.equal(requiredAdminScope('/resources/reports'), 'analytics');
+  assert.equal(requiredAdminScope('/resources/surveys'), 'settings');
+});
+
+test('event payloads are normalized and malformed values are rejected', () => {
+  const event = normalizeEventPayload({
+    title: ' Alumni Homecoming ',
+    description: 'Reconnect with the alumni community.',
+    category: 'Homecoming',
+    date: '2026-09-20T09:00:00+08:00',
+    endDate: '2026-09-20T18:00:00+08:00',
+    location: 'NDDU Campus',
+    capacity: '500',
+    latitude: '6.1164',
+    longitude: '125.1716',
+    image_url: 'https://example.com/event.webp',
+    internalNote: 'must not survive normalization',
+  });
+  assert.equal(event.title, 'Alumni Homecoming');
+  assert.equal(event.capacity, 500);
+  assert.equal(event.internalNote, undefined);
+  assert.equal(event.status, 'published');
+  assert.throws(() => normalizeEventPayload({ ...event, date: 'not-a-date' }), /valid date/);
+  assert.throws(() => normalizeEventPayload({ ...event, image_url: 'javascript:alert(1)' }), /HTTP or HTTPS/);
+  assert.throws(() => normalizeEventPayload({ ...event, endDate: '2026-09-19T09:00:00Z' }), /later than/);
+});
+
+test('public events expose an allowlisted response only', () => {
+  const event = toPublicEvent({
+    id: 'event-1',
+    created_at: '2026-09-01T00:00:00Z',
+    payload: {
+      title: 'Public event',
+      description: 'Public details',
+      status: 'published',
+      date: '2026-09-20T01:00:00Z',
+      location: 'NDDU',
+      privateStaffNote: 'never expose this',
+    },
+  }, 4);
+  assert.equal(event.interest_count, 4);
+  assert.equal(event.privateStaffNote, undefined);
+  assert.deepEqual(Object.keys(event).sort(), [
+    'capacity', 'category', 'city', 'created_at', 'date', 'description', 'endDate',
+    'featured', 'id', 'image_url', 'interest_count', 'latitude', 'location',
+    'longitude', 'publishedAt', 'registrationDeadline', 'status', 'title',
+  ].sort());
 });
