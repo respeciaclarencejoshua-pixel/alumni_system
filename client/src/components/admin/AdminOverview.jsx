@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import CommunityOverview from './CommunityOverview.jsx';
 import { adminApi } from '../../lib/adminApi.js';
 
 const metricDefinitions = [
@@ -30,7 +31,7 @@ function relativeTime(value) {
   return new Date(value).toLocaleDateString();
 }
 
-export default function AdminOverview({ onNavigate }) {
+export default function AdminOverview({ onNavigate, user }) {
   const [overview, setOverview] = useState(null);
   const [attention, setAttention] = useState([]);
   const [error, setError] = useState('');
@@ -47,8 +48,9 @@ export default function AdminOverview({ onNavigate }) {
   useEffect(() => { load(); }, [days]);
 
   return <div className="live-admin-overview">
-    <header className="admin-page-header"><div><p>Live community overview</p><h1>Alumni System Dashboard</h1><span>Connected to current member, content, event, opportunity, gallery, and chat records.</span></div><div className="dashboard-range"><select value={days} onChange={e=>setDays(Number(e.target.value))}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select><button onClick={load}>↻ Refresh</button></div></header>
+    <header className="admin-page-header"><div><p>Live community overview</p><h1>Alumni System Dashboard</h1><span>Manage alumni, support requests, batch groups, announcements, events and community activity.</span></div><div className="dashboard-range"><select value={days} onChange={e=>setDays(Number(e.target.value))}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select><button onClick={load}>↻ Refresh</button></div></header>
     {error && <p className="admin-access-error">{error}</p>}
+    {user?.role==='admin'&&<CommunityOverview onNavigate={onNavigate}/>}
     {!overview ? <section className="admin-panel admin-live-loading">Loading live system data…</section> : <>
       <section className="admin-attention"><header><div><p>Needs attention</p><h2>Administrative work queue</h2></div><span>{attention.reduce((total,item)=>total+item.count,0)} open</span></header><div>{attention.map(item=><button className={item.count?item.tone:'clear'} key={item.key} onClick={()=>onNavigate(item.page)}><span>{item.label}</span><strong>{item.count}</strong><small>{item.count?'Review items':'All clear'}</small></button>)}</div></section>
       <section className="admin-metrics live-admin-metrics">{metricDefinitions.map(([key, label, note]) => <button className={`admin-metric ${key === 'pendingApprovals' && overview.metrics[key] ? 'alert' : ''}`} key={key} onClick={()=>onNavigate(['totalAlumni','verifiedAlumni','newRegistrations','employers','dualRole'].includes(key)?'Members':key==='pendingApprovals'?'Alumni Verification':['posts','galleryPhotos'].includes(key)?'Social & News':['opportunities','events','eventResponses'].includes(key)?'Opportunities & Events':'Dashboard')}><p>{label}</p><strong>{Number(overview.metrics[key] || 0).toLocaleString()}</strong><span>{note}{key==='newRegistrations'&&analytics?.trends?.registrations!==undefined?` · ${analytics.trends.registrations>=0?'+':''}${analytics.trends.registrations}% vs previous`:''}</span></button>)}</section>
@@ -61,6 +63,7 @@ export default function AdminOverview({ onNavigate }) {
         ['Alumni Verification', 'Pending graduation evidence and approvals'],
         ['Opportunities & Events', 'Published opportunities, events, and attendee interest'],
         ['Social & News', 'Feed and gallery content management'],
+        ...(user?.role==='admin'?[['Help & Support','Alumni requests, office replies and status updates'],['Community & Requests','Batch groups and official announcements']]:[]),
       ].map(([page, description]) => <button key={page} onClick={() => onNavigate(page)}><strong>{page}</strong><span>{description}</span><b>→</b></button>)}<article><strong>Private chat</strong><span>Activity totals are connected. Message bodies and files remain visible only to participants.</span><b>🔒</b></article></div></section>
       <section className="admin-panel operations"><div className="panel-heading"><div><p>Across connected modules</p><h2>Recent activity</h2></div><button onClick={load}>Refresh</button></div>{overview.activity.length ? overview.activity.map((item) => <div className="operation" key={`${item.type}-${item.id}`}><b>◇</b><span><strong>{item.type} · {item.title}</strong><small>{item.actor} · {relativeTime(item.created_at)}</small></span></div>) : <div className="admin-live-empty">No activity has been recorded yet.</div>}</section>
     </>}
