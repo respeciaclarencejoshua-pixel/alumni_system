@@ -6,6 +6,8 @@
     "server"
   ],
   "scripts": {
+    "build": "npm --workspace client run build",
+    "vercel:install": "npm ci --include=dev --workspaces --include-workspace-root",
     "install-all": "npm install",
     "dev": "concurrently \"npm --workspace server run dev\" \"npm --workspace client run dev\"",
     "start": "npm --workspace server start"

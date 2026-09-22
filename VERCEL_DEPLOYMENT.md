@@ -5,7 +5,8 @@ The checked-in configuration builds React into `client/dist` and exposes the Exp
 ## Project settings
 
 - Import the **repository root**, not just `client` or `server`.
-- Use the checked-in `vercel.json`: framework preset Other, install `npm ci`, build `npm --workspace client run build`, output `client/dist`.
+- Use the checked-in `vercel.json`: framework preset Other, install `npm run vercel:install`, build `npm run build`, output `client/dist`.
+- Keep these root npm scripts as the deployment entry points. Vercel's Node builder can invoke commands from `api/`; a direct `npm --workspace client run build` there fails with `No workspaces found`. `npm run` locates the root package and runs its script from that package's directory. The install script explicitly includes both workspaces and development dependencies needed by Vite.
 - Choose a supported Node version satisfying Vite's engine requirement (Node 22.12+ in the 22 release line is suitable for the installed Vite version).
 - Configure the function region near the Supabase project's region. The repository deliberately does not guess the database region.
 - `maxDuration` is 60 seconds. Large exports/analytics must still be measured; increasing duration does not fix expensive queries.
