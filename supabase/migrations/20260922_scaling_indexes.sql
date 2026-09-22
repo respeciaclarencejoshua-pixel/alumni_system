@@ -2,6 +2,9 @@
 -- Test on staging with production-like data and EXPLAIN (ANALYZE, BUFFERS).
 -- Run each statement separately, outside a transaction: CONCURRENTLY cannot run
 -- inside a transaction block. This migration has NOT been applied by the audit.
+-- Do not paste the whole file into a transactional SQL Editor run.
+-- For small tables, the paste-and-run alternative is:
+-- supabase/maintenance/scaling_indexes_sql_editor.sql (temporarily blocks writes).
 
 -- Latest education lookup is used for each directory/chat profile.
 create index concurrently if not exists education_profile_created_idx

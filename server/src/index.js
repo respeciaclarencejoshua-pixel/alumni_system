@@ -1,6 +1,7 @@
 import { createAsyncCache } from '../../shared/asyncCache.mjs';
 import { opportunityUpdateSchema, galleryCurationSchema } from './adminValidation.js';
 import cors from 'cors';
+import { configuredOrigins } from './corsOrigins.js';
 import dotenv from 'dotenv';
 import express from 'express';
 import helmet from 'helmet';
@@ -33,10 +34,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = configuredOrigins();
 
 const DEFAULT_SETTINGS = Object.freeze({
   allow_open_signups: true,
@@ -342,7 +340,7 @@ app.use(
       }
       
       // Check configured origins for production
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.has(origin)) {
         return callback(null, true);
       }
 

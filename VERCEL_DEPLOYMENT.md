@@ -35,6 +35,14 @@ Vercel supplies `VERCEL`/`VERCEL_ENV`. Local dotenv files are ignored on Vercel 
 
 ## Shared limits and caches
 
+If an admin action reports `Origin is not allowed by CORS`, set Production
+`CLIENT_ORIGIN=https://alumni-system-client.vercel.app` (replace with your actual
+website origin) and redeploy. The API also accepts exact HTTPS origins from
+`VERCEL_URL`, `VERCEL_BRANCH_URL`, and `VERCEL_PROJECT_PRODUCTION_URL` when running
+on Vercel. Additional custom domains must be listed in `CLIENT_ORIGIN`.
+Origin checks do not grant administrator permissions; authentication and scope
+checks still run for admin requests.
+
 The optional Redis REST store uses atomic Lua increments with expiry. The ingress, per-admin, and sensitive-action counters have separate namespaces. Without both Redis variables, limits are **per process only** and do not enforce a deployment-wide allowance. Partial configuration fails startup. A configured but unavailable Redis service returns an error rather than silently allowing unlimited requests. Account for the extra REST calls and monitor Redis availability/usage.
 
 The 15-second public-data cache remains per warm instance. A mutation clears only that instance's snapshots; other instances can show the previous public snapshot until their short TTL expires. No authenticated/private responses are shared through this cache. Maintenance/settings checks also have a short per-instance cache. Browser-to-Supabase requests do not pass through Express's rate limiter; RLS and database/Realtime capacity still matter.

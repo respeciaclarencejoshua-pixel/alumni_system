@@ -1,3 +1,4 @@
+import { communityAccess } from './lib/communityAccess.js';
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase.js';
 import Feed from './components/Feed.jsx';
@@ -86,9 +87,10 @@ function App() {
   const [user, setUser] = useState(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [verificationOpen, setVerificationOpen] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [alumniVerificationStatus, setVerificationStatus] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountProfile, setAccountProfile] = useState(null);
+  const { isSuperAdmin, verificationStatus } = communityAccess(user?.id, accountProfile, alumniVerificationStatus);
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [homeData, setHomeData] = useState({ news: [], events: [], metrics: null });
@@ -227,6 +229,8 @@ function App() {
       return;
     }
 
+    let active = true;
+    setVerificationStatus(null);
     supabase
       .from('alumni_verifications')
       .select('status')
@@ -235,9 +239,10 @@ function App() {
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        setVerificationStatus(data?.status || null);
+        if (active) setVerificationStatus(data?.status || null);
       });
-  }, [user]);
+    return () => { active = false; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -285,15 +290,18 @@ function App() {
       return;
     }
 
+    let active = true;
+    setAccountProfile(null);
     supabase
       .from('profiles')
-      .select('first_name, last_name, email, avatar_url')
+      .select('id, first_name, last_name, email, avatar_url, role, status, deactivated_at')
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data }) => {
-        setAccountProfile(data || null);
+        if (active) setAccountProfile(data || null);
       });
-  }, [user]);
+    return () => { active = false; };
+  }, [user?.id]);
 
   const quickActions = [
     {
@@ -481,7 +489,7 @@ function App() {
                   }
                 >
                   <AccountAvatar />
-                  <span>{accountFirstName}</span>
+                  <span>{isSuperAdmin ? 'Super Admin' : accountFirstName}</span>
                   <i>⌄</i>
                 </button>
 
@@ -491,7 +499,7 @@ function App() {
                       <AccountAvatar menu />
 
                       <span>
-                        <small>My alumni account</small>
+                        <small>{isSuperAdmin ? 'Super Admin account' : 'My alumni account'}</small>
                         <strong>{accountFirstName}</strong>
                         <small>{user.email}</small>
                       </span>
@@ -513,7 +521,7 @@ function App() {
                       <p>
                         <strong>
                           {verificationStatus === 'verified'
-                            ? 'Alumni verified'
+                            ? (isSuperAdmin ? 'Super Admin access' : 'Alumni verified')
                             : verificationStatus === 'pending'
                             ? 'Verification under review'
                             : verificationStatus ===
@@ -524,7 +532,7 @@ function App() {
 
                         <small>
                           {verificationStatus === 'verified'
-                            ? 'Your profile is confirmed.'
+                            ? (isSuperAdmin ? 'Administrative and community access enabled.' : 'Your profile is confirmed.')
                             : 'Complete verification to join the directory.'}
                         </small>
                       </p>
@@ -534,10 +542,11 @@ function App() {
                       className="account-menu-primary"
                       onClick={() => {
                         setAccountMenuOpen(false);
-                        setVerificationOpen(true);
+                        if (isSuperAdmin) window.location.assign('/admin');
+                        else setVerificationOpen(true);
                       }}
                     >
-                      {verificationStatus === 'verified'
+                      {isSuperAdmin ? 'Open admin dashboard' : verificationStatus === 'verified'
                         ? 'View verification'
                         : 'Verify alumni status'}
 
@@ -587,8 +596,8 @@ function App() {
 
               <button
                 className="header-auth-button header-auth-button-primary"
-                onClick={() => siteConfig.allowOpenSignups && setAuthView('register')}
-                disabled={!siteConfig.allowOpenSignups}
+                onClick={() => isSuperAdmin ? window.location.assign('/admin') : user ? setActiveTab('Profile') : siteConfig.allowOpenSignups && setAuthView('register')}
+                disabled={!user && !siteConfig.allowOpenSignups}
               >
                 {siteConfig.allowOpenSignups ? 'Join now' : 'Registration closed'}
               </button>
@@ -640,7 +649,7 @@ function App() {
                 </p>
 
                 <h1>
-                  Welcome home, {user ? accountFirstName : 'Alumni'}.
+                  Welcome home, {isSuperAdmin ? 'Super Admin' : user ? accountFirstName : 'Alumni'}.
                 </h1>
 
                 <p>
@@ -651,10 +660,10 @@ function App() {
                 <div className="hero-actions">
                   <button
                     className="dark-button"
-                    onClick={() => siteConfig.allowOpenSignups && setAuthView('register')}
-                    disabled={!siteConfig.allowOpenSignups}
+                    onClick={() => isSuperAdmin ? window.location.assign('/admin') : user ? setActiveTab('Profile') : siteConfig.allowOpenSignups && setAuthView('register')}
+                    disabled={!user && !siteConfig.allowOpenSignups}
                   >
-                    {siteConfig.allowOpenSignups ? 'Create Your Alumni Profile' : 'Registration is currently closed'}
+                    {isSuperAdmin ? 'Open Admin Dashboard' : user ? 'View Your Profile' : siteConfig.allowOpenSignups ? 'Create Your Alumni Profile' : 'Registration is currently closed'}
                   </button>
 
                   {!user && (
@@ -849,10 +858,10 @@ function App() {
 
                 <button
                   className="dark-button"
-                  onClick={() => siteConfig.allowOpenSignups && setAuthView('register')}
-                  disabled={!siteConfig.allowOpenSignups}
+                  onClick={() => isSuperAdmin ? window.location.assign('/admin') : user ? setActiveTab('Profile') : siteConfig.allowOpenSignups && setAuthView('register')}
+                  disabled={!user && !siteConfig.allowOpenSignups}
                 >
-                  {siteConfig.allowOpenSignups ? 'Create Your Alumni Profile' : 'Registration is currently closed'}
+                  {isSuperAdmin ? 'Open Admin Dashboard' : user ? 'View Your Profile' : siteConfig.allowOpenSignups ? 'Create Your Alumni Profile' : 'Registration is currently closed'}
                 </button>
               </section>
             </div>
