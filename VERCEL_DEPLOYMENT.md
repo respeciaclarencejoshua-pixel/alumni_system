@@ -5,6 +5,7 @@ The checked-in configuration builds React into `client/dist` and exposes the Exp
 ## Project settings
 
 - Import the **repository root**, not just `client` or `server`.
+- If logs show `Missing script: vercel:install` at `/vercel/path0/client`, installation is running in the client workspace. A forwarding script now handles installation there, but the Vercel Root Directory must still be the repository root to include the API and resolve `client/dist` correctly. Save the Root Directory change and deploy the latest commit.
 - Use the checked-in `vercel.json`: framework preset Other, install `npm run vercel:install`, build `npm run build`, output `client/dist`.
 - Keep these root npm scripts as the deployment entry points. Vercel's Node builder can invoke commands from `api/`; a direct `npm --workspace client run build` there fails with `No workspaces found`. `npm run` locates the root package and runs its script from that package's directory. The install script explicitly includes both workspaces and development dependencies needed by Vite.
 - Choose a supported Node version satisfying Vite's engine requirement (Node 22.12+ in the 22 release line is suitable for the installed Vite version).
