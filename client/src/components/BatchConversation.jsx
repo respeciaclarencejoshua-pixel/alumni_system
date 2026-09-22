@@ -31,24 +31,27 @@ export default function BatchConversation({ group, user, kind = 'chat', initialA
   const followLatest = useRef(true);
   const [newMessages, setNewMessages] = useState(false);
   useEffect(() => {
-    let active=true, running=false;
+    let active=true, running=false, metadata=null, metadataExpiresAt=0;
     setEntries([]);setMembers([]);setError('');setLoading(true);setCanPost(false);setCanRead(false);
     async function load() {
       if(running || document.hidden)return;
       running=true;
       try {
-        const [joined,manager,announce] = await Promise.all([
-          batchResult(supabase.rpc('is_batch_member',{p_space:group.id})),
-          batchResult(supabase.rpc('community_manager')),
-          kind==='announcement'?batchResult(supabase.rpc('can_announce_batch',{p_space:group.id})):Promise.resolve(false),
-        ]);
+        if (!metadata || Date.now() >= metadataExpiresAt) {
+          const [joined, manager, announce] = await Promise.all([
+            batchResult(supabase.rpc('is_batch_member',{p_space:group.id})),
+            batchResult(supabase.rpc('community_manager')),
+            kind==='announcement'?batchResult(supabase.rpc('can_announce_batch',{p_space:group.id})):Promise.resolve(false),
+          ]);
+          const people = joined || manager ? await batchResult(supabase.rpc('list_batch_members',{p_space:group.id})) : [];
+          metadata = {joined,manager,announce,people};
+          metadataExpiresAt = Date.now() + 60000;
+        }
+        const {joined,manager,announce,people}=metadata;
         if(!active)return;
         setCanRead(joined||manager);setCanPost(kind==='announcement'?announce:joined);
         if(!joined&&!manager){setEntries([]);setMembers([]);return;}
-        const [rows,people]=await Promise.all([
-          batchResult(supabase.from('batch_entries').select('*').eq('space_id',group.id).eq('kind',kind).order('created_at',{ascending:false}).limit(100)),
-          batchResult(supabase.rpc('list_batch_members',{p_space:group.id})),
-        ]);
+        const rows=await batchResult(supabase.from('batch_entries').select('*').eq('space_id',group.id).eq('kind',kind).order('created_at',{ascending:false}).limit(100));
         if(kind==='announcement'&&initialAnnouncementId){
           const target=await batchResult(supabase.from('batch_entries').select('*').eq('id',initialAnnouncementId).eq('space_id',group.id).eq('kind','announcement').maybeSingle());
           if(target){const index=rows.findIndex(row=>row.id===target.id);if(index>=0)rows.splice(index,1);rows.unshift(target);}
@@ -68,8 +71,9 @@ export default function BatchConversation({ group, user, kind = 'chat', initialA
     load();
     const interval=kind==='chat'?setInterval(load,5000):null;
     document.addEventListener('visibilitychange',load);
-    window.addEventListener('batch-membership-changed',load);
-    return()=>{active=false;if(interval)clearInterval(interval);document.removeEventListener('visibilitychange',load);window.removeEventListener('batch-membership-changed',load);};
+    const membershipChanged=()=>{metadataExpiresAt=0;load();};
+    window.addEventListener('batch-membership-changed',membershipChanged);
+    return()=>{active=false;if(interval)clearInterval(interval);document.removeEventListener('visibilitychange',load);window.removeEventListener('batch-membership-changed',membershipChanged);};
   },[group.id,user.id,kind,revision]);
   useEffect(() => { setDraft('');setReplyTo(null);setReactionMenu(null); followLatest.current=true;setNewMessages(false); }, [group.id,user.id,kind]);
   const latestEntry = entries[entries.length-1]?.id;

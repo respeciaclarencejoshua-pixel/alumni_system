@@ -1,7 +1,8 @@
+import { createAsyncCache } from '../../../shared/asyncCache.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import './Chat.css';
-import {ChatMenu, ChatCover, useChatSettings} from './ChatExtras.jsx';
+import {ChatMenu, ChatCover, useChatSettings, mediaUrl} from './ChatExtras.jsx';
 import BatchConversation from './BatchConversation.jsx';
 import DirectMessageBubble from './DirectMessageBubble.jsx';
 
@@ -20,6 +21,9 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
   const [actionBusy,setActionBusy]=useState(false);
   const directInputRef=useRef(null);
   const activePersonRef=useRef(null);
+  const realtimeReady=useRef(false);
+  const messageRequests=useRef(createAsyncCache({ttlMs:0,maxEntries:2}));
+  const peopleRequests=useRef(createAsyncCache({ttlMs:1000,maxEntries:1}));
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchSettings]=useChatSettings(selectedBatch?`batch:${selectedBatch.id}`:'');
   const [batchMenuTarget,setBatchMenuTarget]=useState(null);
@@ -64,12 +68,15 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
   }, [batchContact?.id]);
 
   async function loadPeople() {
+    return peopleRequests.current.get(user.id, async () => {
     const { data, error: loadError } = await supabase.rpc('list_chat_profiles');
     if (loadError) setError('Apply the latest Supabase schema to enable chat.');
     else setPeople((data || []).filter((p) => p.id !== user.id));
+    });
   }
 
   async function loadMessages(personId) {
+    return messageRequests.current.get(personId, async () => {
     const { data, error: loadError } = await supabase.from('direct_messages').select('*')
       .or(`and(sender_id.eq.${user.id},recipient_id.eq.${personId}),and(sender_id.eq.${personId},recipient_id.eq.${user.id})`)
       .order('created_at', { ascending: false }).limit(100);
@@ -77,8 +84,8 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
     if (loadError) setError('Messages could not be loaded.'); else {
       const resolved = await Promise.all((data || []).map(async (message) => {
         if (!message.attachment_url || message.message_type === 'gif' || message.attachment_url.startsWith('http')) return message;
-        const { data: signed } = await supabase.storage.from('chat-attachments').createSignedUrl(message.attachment_url, 3600);
-        return { ...message, attachment_url: signed?.signedUrl || '' };
+        try { return { ...message, attachment_url: await mediaUrl(message.attachment_url) }; }
+        catch { return { ...message, attachment_url: '' }; }
       }));
       if(activePersonRef.current!==personId)return;
       const log=endRef.current?.parentElement;
@@ -87,21 +94,26 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
       if(data?.length){const result=await supabase.from('direct_message_reactions').select('*').in('message_id',data.map(m=>m.id));if(activePersonRef.current===personId)setDirectReactions((result.data||[]).map(r=>({...r,isMine:r.user_id===user.id})));}
       else setDirectReactions([]);
     }
-    await supabase.from('direct_messages').update({ read_at: new Date().toISOString() })
-      .eq('sender_id', personId).eq('recipient_id', user.id).is('read_at', null);
+    const unreadIds = (data || []).filter(message => message.recipient_id === user.id && !message.read_at).map(message => message.id);
+    if (!loadError && activePersonRef.current === personId && unreadIds.length) {
+      await supabase.from('direct_messages').update({ read_at: new Date().toISOString() })
+        .in('id', unreadIds).eq('recipient_id', user.id).is('read_at', null);
+    }
+    });
   }
 
   useEffect(() => { loadPeople(); }, [user.id]);
   useEffect(() => { if (contact?.id) { setSelectedBatch(null); setSelected(contact); setDirectoryOpen(true); setMinimized(false); onContactHandled?.(); } }, [contact?.id]);
-  useEffect(() => { activePersonRef.current=selected?.id;setMessages([]);setDirectReply(null);setDirectReactions([]);setError('');if(selected?.id)loadMessages(selected.id);const timer=setInterval(()=>{if(selected?.id&&!document.hidden)loadMessages(selected.id);},5000);return()=>{activePersonRef.current=null;clearInterval(timer);}; }, [selected?.id]);
+  useEffect(() => { activePersonRef.current=selected?.id;setMessages([]);setDirectReply(null);setDirectReactions([]);setError('');if(selected?.id)loadMessages(selected.id);let lastPoll=Date.now();const poll=()=>{if(selected?.id&&!document.hidden&&(!realtimeReady.current||Date.now()-lastPoll>=15000)){lastPoll=Date.now();loadMessages(selected.id);}};const onVisible=()=>{lastPoll=0;poll();};const timer=setInterval(poll,5000);document.addEventListener('visibilitychange',onVisible);return()=>{activePersonRef.current=null;clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);}; }, [selected?.id]);
   useEffect(() => {
+    let refreshTimer;
+    const refresh = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => { if (!document.hidden) { loadPeople(); if (selected?.id) loadMessages(selected.id); } }, 200);
+    };
     const channel = supabase.channel(`chat-widget:${user.id}`).on('postgres_changes',
-      { event: '*', schema: 'public', table: 'direct_messages',filter:`sender_id=eq.${user.id}` }, () => {
-        loadPeople(); if (selected?.id) loadMessages(selected.id);
-      }).on('postgres_changes',{event:'*',schema:'public',table:'direct_messages',filter:`recipient_id=eq.${user.id}`}, () => {
-        loadPeople(); if (selected?.id) loadMessages(selected.id);
-      }).subscribe();
-    return () => { supabase.removeChannel(channel); };
+      { event: '*', schema: 'public', table: 'direct_messages',filter:`sender_id=eq.${user.id}` }, refresh).on('postgres_changes',{event:'*',schema:'public',table:'direct_messages',filter:`recipient_id=eq.${user.id}`}, refresh).subscribe(status => { realtimeReady.current = status === 'SUBSCRIBED'; });
+    return () => { clearTimeout(refreshTimer); realtimeReady.current=false; supabase.removeChannel(channel); };
   }, [user.id, selected?.id]);
   useEffect(() => { if(followDirectRef.current){const log=endRef.current?.parentElement;if(log)log.scrollTop=log.scrollHeight;} }, [messages, minimized]);
   useEffect(() => { if (picker === 'gif') loadTrendingGifs(); }, [picker]);

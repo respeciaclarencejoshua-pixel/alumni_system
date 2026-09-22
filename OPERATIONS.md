@@ -34,3 +34,20 @@ Revoke and rotate exposed Supabase, Turnstile, and provider keys immediately.
 Review admin audit logs, Auth logs, and hosting logs; preserve evidence and notify
 the institutional privacy/security owner. Incident records must not contain
 access tokens, passwords, document contents, or raw database errors.
+
+## Capacity planning
+
+See `SCALABILITY_REVIEW_2026-09-22.md` for the workload assessment and staging
+load-test plan. Public data uses a 15-second process-local cache. Admin request
+and sensitive-action limits are per authenticated account; the additional
+shared-IP ingress allowance is configured with
+`PUBLIC_API_RATE_LIMIT_PER_MINUTE` (default 3000).
+
+Before deploying multiple server processes, use a shared limiter store and
+coordinate cache invalidation. Review `trust proxy` against the real proxy
+chain. The candidate index migration `20260922_scaling_indexes.sql` has not been
+applied; run its statements separately on staging before production.
+
+## Vercel deployment
+
+For Vercel, use the repository root and the checked-in `vercel.json`. See [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) for environment variables, shared Redis rate limits, and preview validation. See [SCALABILITY_REVIEW_2026-09-22.md](SCALABILITY_REVIEW_2026-09-22.md) for measured results and remaining bottlenecks.

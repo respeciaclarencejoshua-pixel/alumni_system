@@ -115,7 +115,7 @@ export default function SystemSettings() {
     }
   }
 
-  if (!settings) return <section className="admin-panel admin-live-loading" role="status">Loading settings…</section>;
+  if (!settings) return <section className="admin-panel admin-live-loading" role="status">{message || 'Loading settings...'}{message && <button onClick={load}>Retry</button>}</section>;
 
   return <div className="settings-page">
     <header className="admin-page-header settings-header"><div><p>Connected administration</p><h1>System Settings</h1><span>Configuration changes are saved to Supabase and audited.</span></div><button onClick={load}>↻ Refresh</button></header>

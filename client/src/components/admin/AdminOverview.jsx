@@ -31,7 +31,7 @@ function relativeTime(value) {
   return new Date(value).toLocaleDateString();
 }
 
-export default function AdminOverview({ onNavigate, user }) {
+export default function AdminOverview({ onNavigate, user, scopes = [] }) {
   const [overview, setOverview] = useState(null);
   const [attention, setAttention] = useState([]);
   const [error, setError] = useState('');
@@ -41,7 +41,7 @@ export default function AdminOverview({ onNavigate, user }) {
 
   async function load() {
     setError('');
-    try { const [summary,tasks,insights,system]=await Promise.all([adminApi('/api/admin/overview'),adminApi('/api/admin/attention'),adminApi(`/api/admin/analytics?days=${days}`),adminApi('/api/admin/system-health')]);setOverview(summary);setAttention(tasks.items||[]);setAnalytics(insights);setHealth(system); }
+    try { const [summary,tasks,insights,system]=await Promise.all([adminApi('/api/admin/overview'),adminApi('/api/admin/attention'),scopes.includes('analytics') ? adminApi(`/api/admin/analytics?days=${days}`) : Promise.resolve(null),adminApi('/api/admin/system-health')]);setOverview(summary);setAttention(tasks.items||[]);setAnalytics(insights);setHealth(system); }
     catch (requestError) { setError(requestError.message); }
   }
 

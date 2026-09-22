@@ -1,3 +1,4 @@
+import { FEED_PAGE_SIZE, COMMENT_PAGE_SIZE, feedPageQuery, commentsPageQuery, normalizeFeedPost, applyOwnReaction, mergeRows } from '../lib/feedData.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import './Feed.css';
@@ -11,7 +12,7 @@ const reactionChoices = [
   { id: 'celebrate', icon: 'celebrate', emoji: '\u{1F389}', label: 'Celebrate' },
   { id: 'support', icon: 'support', emoji: '\u{2764}\u{FE0F}', label: 'Support' },
 ];
-const PAGE_SIZE = 10;
+const PAGE_SIZE = FEED_PAGE_SIZE;
 const reportReasons = ['spam','harassment','inappropriate','misinformation','privacy','copyright','scam','other'];
 
 const Icon = ({ name, size = 20 }) => {
@@ -53,14 +54,7 @@ function extractHashtags(value = '') {
   return value.match(/#[\p{L}\p{N}_]+/gu) || [];
 }
 
-function normalizePost(post) {
-  return {
-    ...post,
-    feed_reactions: post.feed_reactions || [],
-    feed_comments: (post.feed_comments || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
-    feed_saved_posts: post.feed_saved_posts || [],
-  };
-}
+const normalizePost = normalizeFeedPost;
 
 function PersonAvatar({ person, className='' }) {
   const name=[person.first_name,person.last_name].filter(Boolean).join(' ');
@@ -120,6 +114,12 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
   const [busyPost, setBusyPost] = useState('');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const feedCursor = useRef(null);
+  const feedLoading = useRef(false);
+  const feedGeneration = useRef(0);
+  const commentRequests = useRef(new Set());
+  const [commentsLoading, setCommentsLoading] = useState({});
+  const [commentErrors, setCommentErrors] = useState({});
   const [reporting, setReporting] = useState(null);
   const [reportReason, setReportReason] = useState('spam');
   const [reportDetails, setReportDetails] = useState('');
@@ -137,31 +137,56 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
   }
 
   async function loadPosts(nextPage = 0) {
-    setLoading(true);
-    setMessage('');
+    if (feedLoading.current || !user?.id) return;
+    feedLoading.current = true;
+    const generation = feedGeneration.current;
+    setLoading(true); setMessage('');
     try {
-      const enriched = await withTimeout(
-        supabase.from('feed_posts').select('*, feed_reactions(user_id, reaction), feed_comments(id, user_id, author_name, content, created_at, parent_comment_id, media_path, gif_url), feed_saved_posts(user_id)').eq('moderation_status','published').is('deleted_at',null).order('created_at', { ascending: false }).range(nextPage * PAGE_SIZE, nextPage * PAGE_SIZE + PAGE_SIZE - 1)
-      );
-      if (!enriched.error) {
-        const rows = (enriched.data || []).map(normalizePost);
-        setPosts((current) => nextPage ? [...current, ...rows] : rows);
-        setHasMore(rows.length === PAGE_SIZE); setPage(nextPage);
-      } else {
-        const basic = await withTimeout(supabase.from('feed_posts').select('*').eq('moderation_status','published').is('deleted_at',null).order('created_at', { ascending: false }).range(nextPage * PAGE_SIZE, nextPage * PAGE_SIZE + PAGE_SIZE - 1));
-        if (basic.error) throw basic.error;
-        const rows = (basic.data || []).map(normalizePost);
-        setPosts((current) => nextPage ? [...current, ...rows] : rows);
-        setHasMore(rows.length === PAGE_SIZE); setPage(nextPage);
-      }
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
+      const { data, error } = await withTimeout(feedPageQuery(supabase, user.id, nextPage ? feedCursor.current : null));
+      if (generation !== feedGeneration.current) return;
+      if (error) throw error;
+      const rows = (data || []).slice(0, PAGE_SIZE).map(normalizePost);
+      if (rows.length) feedCursor.current = rows[rows.length - 1];
+      else if (!nextPage) feedCursor.current = null;
+      setPosts(current => nextPage ? mergeRows(current, rows) : rows);
+      setHasMore((data || []).length > PAGE_SIZE); setPage(nextPage);
+    } catch (error) { if (generation === feedGeneration.current) setMessage(error.message); }
+    finally { if (generation === feedGeneration.current) { feedLoading.current = false; setLoading(false); } }
   }
 
-  useEffect(() => { loadPosts(); }, []);
+  async function loadComments(post) {
+    if (commentRequests.current.has(post.id)) return;
+    commentRequests.current.add(post.id);
+    const generation = feedGeneration.current;
+    setCommentsLoading(current => ({ ...current, [post.id]: true }));
+    setCommentErrors(current => ({ ...current, [post.id]: '' }));
+    try {
+      const { data, error } = await withTimeout(commentsPageQuery(supabase, post.id, post.comments_cursor));
+      if (generation !== feedGeneration.current) return;
+      if (error) throw error;
+      const rows = (data || []).slice(0, COMMENT_PAGE_SIZE);
+      replacePost(post.id, current => ({ ...current,
+        feed_comments: mergeRows(current.feed_comments, rows).sort((a,b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)),
+        comments_loaded: true,
+        comments_has_more: (data || []).length > COMMENT_PAGE_SIZE,
+        comments_cursor: rows[rows.length - 1] || current.comments_cursor,
+      }));
+    } catch (error) { if (generation === feedGeneration.current) setCommentErrors(current => ({ ...current, [post.id]: error.message })); }
+    finally { if (generation === feedGeneration.current) { commentRequests.current.delete(post.id); setCommentsLoading(current => ({ ...current, [post.id]: false })); } }
+  }
+
+  function toggleComments(post) {
+    const opening = !openComments.includes(post.id);
+    setOpenComments(current => opening ? [...current, post.id] : current.filter(id => id !== post.id));
+    if (opening && !post.comments_loaded) loadComments(post);
+  }
+
+  useEffect(() => {
+    setPosts([]); setOpenComments([]); setCommentsLoading({}); setCommentErrors({});
+    feedCursor.current = null;
+    loadPosts();
+    return () => { feedGeneration.current += 1; feedLoading.current = false; commentRequests.current.clear(); };
+  }, [user?.id]);
   useEffect(() => { if(user?.id) supabase.from('hidden_feed_posts').select('post_id').eq('user_id',user.id).then(({data})=>setHiddenPostIds((data||[]).map(row=>row.post_id))); }, [user?.id]);
   useEffect(() => { if(!selectedMention)return; const close=(event)=>event.key==='Escape'&&setSelectedMention(null); window.addEventListener('keydown',close); return()=>window.removeEventListener('keydown',close); }, [selectedMention]);
   useEffect(() => {
@@ -257,7 +282,7 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
       : supabase.from('feed_reactions').upsert({ post_id: post.id, user_id: user.id, reaction }, { onConflict: 'post_id,user_id' });
     const { error } = await query;
     if (error) setMessage('Reactions will be available after the updated database schema is applied.');
-    else replacePost(post.id, (current) => ({ ...current, feed_reactions: [...current.feed_reactions.filter((item) => item.user_id !== user.id), ...(existing?.reaction === reaction ? [] : [{ user_id: user.id, reaction }])] }));
+    else replacePost(post.id, current => applyOwnReaction(current, user.id, reaction));
     setOpenReactionPost('');
     setBusyPost('');
   }
@@ -293,7 +318,7 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
     const { data, error } = await supabase.from('feed_comments').insert({ post_id: post.id, user_id: user.id, author_name: displayName, content: draft || null, parent_comment_id:replyingTo[post.id]?.id || null, media_path:mediaPath, gif_url:gifUrl || null }).select().single();
     if (error) setMessage('Comments will be available after the updated database schema is applied.');
     else {
-      replacePost(post.id, (current) => ({ ...current, feed_comments: [...current.feed_comments, data] }));
+      replacePost(post.id, (current) => ({ ...current, feed_comments: mergeRows(current.feed_comments, [data]), comment_count: current.comment_count + 1 }));
       setCommentDrafts((current) => ({ ...current, [post.id]: '' }));
       setCommentFiles((current) => ({ ...current, [post.id]: null })); setCommentGifs((current) => ({ ...current, [post.id]: '' })); setReplyingTo((current) => ({ ...current, [post.id]: null }));
     }
@@ -396,12 +421,12 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
         {activeHashtag && <div className="feed-filter"><span>Showing posts tagged <strong>{activeHashtag}</strong></span><button onClick={() => setActiveHashtag('')}>Clear filter</button></div>}
 
         <section className="feed-posts" aria-label="Alumni posts">
-          {loading ? <p className="feed-empty">Loading alumni posts...</p> : visiblePosts.length === 0 ? <div className="feed-empty"><h2>No posts found</h2><p>{savedOnly ? 'Posts you save will appear here.' : 'Try another hashtag or share a new update.'}</p></div> : visiblePosts.map((post) => {
+          {loading && !posts.length ? <p className="feed-empty">Loading alumni posts...</p> : visiblePosts.length === 0 ? <div className="feed-empty"><h2>No posts found</h2><p>{savedOnly ? 'Posts you save will appear here.' : 'Try another hashtag or share a new update.'}</p></div> : visiblePosts.map((post) => {
             const currentReaction = post.feed_reactions.find((item) => item.user_id === user?.id)?.reaction;
             const currentReactionChoice = reactionChoices.find((choice) => choice.id === currentReaction);
             const reactionSummary = reactionChoices.map((choice) => ({
               ...choice,
-              count: post.feed_reactions.filter((item) => item.reaction === choice.id).length,
+              count: post.reaction_counts[choice.id] || 0,
             })).filter((choice) => choice.count > 0);
             const saved = post.feed_saved_posts.some((item) => item.user_id === user?.id);
             const commentsOpen = openComments.includes(post.id);
@@ -416,18 +441,21 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
               {post.gif_url && <div className="post-image"><img src={post.gif_url} alt="GIF shared with this post" loading="lazy" /></div>}
               <div className="post-summary" aria-live="polite">
                 <span className="reaction-summary">{reactionSummary.length ? reactionSummary.map((choice) => <span key={choice.id}><Icon name={choice.icon} size={17} />{choice.count} {choice.label}</span>) : <span>No reactions</span>}</span>
-                <span>{post.feed_comments.length} {post.feed_comments.length === 1 ? 'comment' : 'comments'}</span>
+                <span>{post.comment_count} {post.comment_count === 1 ? 'comment' : 'comments'}</span>
               </div>
               <div className="post-actions">
                 <div className="reaction-menu-wrap">
                   <button disabled={post.reactions_disabled} title={post.reactions_disabled?'Reactions are disabled on this post':''} className={currentReaction ? 'active' : ''} aria-expanded={openReactionPost === post.id} onClick={() => setOpenReactionPost((current) => current === post.id ? '' : post.id)}><Icon name={currentReactionChoice?.icon || 'like'} />{post.reactions_disabled?'Reactions off':currentReactionChoice?.label || 'React'}</button>
                   <div className={`reaction-menu ${openReactionPost === post.id ? 'open' : ''}`} aria-label="Choose a reaction">{reactionChoices.map((choice) => <button key={choice.id} type="button" title={choice.label} aria-label={choice.label} disabled={busyPost === post.id} className={currentReaction === choice.id ? 'active' : ''} aria-pressed={currentReaction === choice.id} onClick={() => react(post, choice.id)}><span className="reaction-emoji" aria-hidden="true">{choice.emoji}</span></button>)}</div>
                 </div>
-                <button className={commentsOpen ? 'active' : ''} onClick={() => setOpenComments((current) => current.includes(post.id) ? current.filter((id) => id !== post.id) : [...current, post.id])}><Icon name="comment" />{post.comments_locked?'Comments locked':'Comment'}</button>
+                <button className={commentsOpen ? 'active' : ''} onClick={() => toggleComments(post)}><Icon name="comment" />{post.comments_locked?'Comments locked':'Comment'}</button>
                 <button className={saved ? 'active' : ''} disabled={busyPost === post.id} onClick={() => toggleSave(post)}><Icon name="bookmark" />{saved ? 'Saved' : 'Save'}</button>
               </div>
               {commentsOpen && <section className="comments-section" aria-label={`Comments on ${post.author_name}'s post`}>
-                {post.feed_comments.length ? <ul>{post.feed_comments.map((comment) => <li key={comment.id} className={comment.parent_comment_id?'comment-reply':''}><strong>{comment.author_name}</strong>{comment.content&&<RichText text={comment.content} people={people} onMention={setSelectedMention} className="comment-content"/>}{comment.media_path&&<img className="comment-media" src={supabase.storage.from('feed-media').getPublicUrl(comment.media_path).data.publicUrl} alt="Comment attachment"/>}{comment.gif_url&&<img className="comment-media" src={comment.gif_url} alt="GIF reply"/>}<footer><time dateTime={comment.created_at}>{formatDate(comment.created_at)}</time><button type="button" onClick={()=>{setReplyingTo((current)=>({...current,[post.id]:comment}));setCommentDrafts((current)=>({...current,[post.id]:`@${comment.author_name} `}))}}>Reply</button></footer></li>)}</ul> : <p className="no-comments">No comments yet. Start the conversation.</p>}
+                {commentsLoading[post.id] && <p role="status">Loading comments...</p>}
+                {commentErrors[post.id] && <p role="alert">{commentErrors[post.id]} <button onClick={() => loadComments(post)}>Retry</button></p>}
+                {post.comments_has_more && <button disabled={commentsLoading[post.id]} onClick={() => loadComments(post)}>Load more comments</button>}
+                {post.feed_comments.length ? <ul>{post.feed_comments.map((comment) => <li key={comment.id} className={comment.parent_comment_id?'comment-reply':''}><strong>{comment.author_name}</strong>{comment.content&&<RichText text={comment.content} people={people} onMention={setSelectedMention} className="comment-content"/>}{comment.media_path&&<img className="comment-media" src={supabase.storage.from('feed-media').getPublicUrl(comment.media_path).data.publicUrl} alt="Comment attachment"/>}{comment.gif_url&&<img className="comment-media" src={comment.gif_url} alt="GIF reply"/>}<footer><time dateTime={comment.created_at}>{formatDate(comment.created_at)}</time><button type="button" onClick={()=>{setReplyingTo((current)=>({...current,[post.id]:comment}));setCommentDrafts((current)=>({...current,[post.id]:`@${comment.author_name} `}))}}>Reply</button></footer></li>)}</ul> : post.comments_loaded ? <p className="no-comments">No comments yet. Start the conversation.</p> : null}
                 {post.comments_locked?<p className="no-comments">A moderator has locked new comments on this post.</p>:<div className="comment-composer"><label htmlFor={`comment-${post.id}`}>Write a comment</label>{replyingTo[post.id]&&<div className="replying-banner"><span>Replying to {replyingTo[post.id].author_name}</span><button type="button" onClick={()=>setReplyingTo((current)=>({...current,[post.id]:null}))}>Cancel</button></div>}<div className="comment-input-row"><input id={`comment-${post.id}`} value={commentDrafts[post.id] || ''} maxLength="1000" placeholder="Write a comment. Type @ to mention someone." onChange={(event)=>{setCommentDrafts((current)=>({...current,[post.id]:event.target.value}));setMentionPost(hasMentionQuery(event.target.value)?post.id:'')}} onKeyDown={(event) => { if (event.key === 'Enter') addComment(post); }} /><button aria-label="Post comment" disabled={busyPost === post.id || (!commentDrafts[post.id]?.trim()&&!commentFiles[post.id]&&!commentGifs[post.id])} onClick={() => addComment(post)}><Icon name="send" /></button></div>{mentionPost===post.id&&<div className="mention-picker mention-picker-under-input" role="listbox" aria-label="Mention an alumnus">{people.filter((person)=>person.id!==user.id&&mentionMatches(person,commentDrafts[post.id]||'')).slice(0,8).map((person)=><MentionOption person={person} key={person.id} onSelect={()=>addMention(post.id,person)}/>) }{!people.some((person)=>person.id!==user.id&&mentionMatches(person,commentDrafts[post.id]||''))&&<p>No matching alumni found.</p>}</div>}<div className="comment-tools"><label className="comment-tool">Photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event)=>setCommentFiles((current)=>({...current,[post.id]:event.target.files?.[0]||null}))}/></label><button type="button" onClick={()=>setEmojiPickerPost(emojiPickerPost===post.id?'':post.id)}>Emoji</button><button type="button" onClick={()=>openGifPicker(post.id)}>GIF</button></div>{emojiPickerPost===post.id&&<div className="comment-emoji-picker">{emojiChoices.map((emoji)=><button type="button" key={emoji} onClick={()=>{setCommentDrafts((current)=>({...current,[post.id]:`${current[post.id]||''}${emoji}`}));setEmojiPickerPost('')}}>{emoji}</button>)}</div>}{commentFiles[post.id]&&<p className="comment-selection">Photo: {commentFiles[post.id].name}</p>}{commentGifs[post.id]&&<p className="comment-selection">GIF selected</p>}{gifPickerPost===post.id&&<div className="comment-gif-picker">{gifError&&<p className="gif-picker-error" role="alert">{gifError}</p>}{gifs.map((gif)=><button type="button" key={gif.id} onClick={()=>{setCommentGifs((current)=>({...current,[post.id]:gif.images.fixed_height_small.url}));setGifPickerPost('')}}><img src={gif.images.fixed_height_small.url} alt={gif.title||'Choose GIF'}/></button>)}</div>}</div>}
               </section>}
             </article>;

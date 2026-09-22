@@ -59,6 +59,8 @@ export default function CommunityServices({ user, admin = false, onBackToFeed, i
       let query = supabase.from('alumni_service_items').select('*').eq('kind', tab).order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(tab==='request'?requestLimit:100);
       if (tab === 'discussion') query = query.eq('space_id', space || '00000000-0000-0000-0000-000000000000');
       if (tab === 'request' && !admin) query = query.eq('author_id', user.id);
+      if (tab === 'request' && statusFilter !== 'all') query = query.eq('status', statusFilter);
+      if (tab === 'request' && categoryFilter !== 'all') query = query.eq('category', categoryFilter);
       const rows = await result(query);
       if(initialAnnouncementId && tab==='announcement'){
         const target=await result(supabase.from('alumni_service_items').select('*').eq('id',initialAnnouncementId).eq('kind','announcement').maybeSingle());
@@ -70,7 +72,7 @@ export default function CommunityServices({ user, admin = false, onBackToFeed, i
     load().catch(e => { if (!cancelled) setError(e.message); }).finally(() => { if (!cancelled) setLoading(false); });
     const timer=tab==='request'?setInterval(()=>{if(!document.hidden)load().catch(e=>{if(!cancelled)setError(e.message);});},15000):null;
     return () => { cancelled = true; if(timer)clearInterval(timer); };
-  }, [user?.id, tab, space, revision, admin,requestLimit]);
+  }, [user?.id, tab, space, revision, admin,requestLimit,statusFilter,categoryFilter]);
   useEffect(()=>{setReplies([]);},[selected?.id]);
   useEffect(() => {
     let cancelled = false;
@@ -139,7 +141,7 @@ export default function CommunityServices({ user, admin = false, onBackToFeed, i
         <button onClick={() => setSelected(selected?.id === item.id ? null : item)}>{selected?.id === item.id ? 'Close conversation' : item.kind==='request'?'View conversation':'View details'}</button>
         {selected?.id === item.id && <div className="cs-details">
           {admin && manager && item.kind === 'request' && <label>Update request status<select disabled={busy} value={item.status} onChange={e => mutate(() => result(supabase.from('alumni_service_items').update({ status: e.target.value }).eq('id', item.id).select('id').single()), 'Status updated.')}>{Object.entries(statuses).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>}
-          {admin && manager && item.kind === 'announcement' && <button disabled={busy} onClick={() => mutate(() => result(supabase.from('alumni_service_items').update({ pinned: !item.pinned }).eq('id', item.id)), 'Announcement updated.')}>{item.pinned ? 'Unpin' : 'Pin announcement'}</button>}
+          {admin && manager && item.kind === 'announcement' && <button disabled={busy} onClick={() => mutate(() => result(supabase.from('alumni_service_items').update({ pinned: !item.pinned }).eq('id', item.id).select('id').single()), 'Announcement updated.')}>{item.pinned ? 'Unpin' : 'Pin announcement'}</button>}
           {item.kind !== 'announcement' && <><h3>Conversation</h3>{replies.length === 0 && <p>No replies yet.</p>}{replies.map(reply => <div className="cs-reply" key={reply.id}><small>{reply.author_id === user.id ? 'You' : item.kind === 'request' ? (reply.author_id === item.author_id ? 'Requester' : 'Alumni office') : 'Group member'} • {date(reply.created_at)}</small><p className="cs-body">{reply.body}</p></div>)}
             {(item.kind === 'request' || joined) && <form onSubmit={e => { e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); mutate(async () => { const added = await result(supabase.from('alumni_service_replies').insert({ item_id: item.id, author_id: user.id, body: f.get('reply').trim() }).select().single()); setReplies(old => [...old, added]); form.reset(); }, 'Reply sent.', false); }}><label>{admin&&item.kind==='request'?'Reply to alumnus':'Your reply'}<textarea name="reply" required maxLength={3000} rows={3} /></label><button disabled={busy}>{busy?'Sending...':'Send reply'}</button></form>}
           </>}

@@ -1,8 +1,24 @@
+import { csvCell } from '../../lib/adminCsv.js';
 import { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi.js';
 import './Members.css';
 
-export default function Members() {
+function MemberAvatar({ src, initials }) {
+  const [failedSrc, setFailedSrc] = useState(null);
+
+  return <div className="user-avatar member-avatar" aria-hidden="true">
+    {src && src !== failedSrc ? <img
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailedSrc(src)}
+    /> : initials}
+  </div>;
+}
+
+export default function Members({ scopes = [] }) {
+  const canVerify = scopes.includes('verification');
+  const [verificationChecks, setVerificationChecks] = useState({});
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +50,11 @@ export default function Members() {
       setLoadError('');
 
       const first = await adminApi('/api/admin/members?page=1&pageSize=100');
-      const pages=Math.ceil((first.total||0)/100);const rest=pages>1?await Promise.all(Array.from({length:pages-1},(_,i)=>adminApi(`/api/admin/members?page=${i+2}&pageSize=100`))):[];
+      const pages = Math.ceil((first.total || 0) / 100);
+      const rest = [];
+      for (let page = 2; page <= pages; page++) {
+        rest.push(await adminApi(`/api/admin/members?page=${page}&pageSize=100`));
+      }
       const members=[...(first.members||[]),...rest.flatMap(x=>x.members||[])];
       setUsers(members);setFilteredUsers(members);
     } catch (error) {
@@ -63,15 +83,19 @@ export default function Members() {
           user.email.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
-    if(advanced.department)filtered=filtered.filter(x=>x.department===advanced.department);
-    if(advanced.course)filtered=filtered.filter(x=>x.course===advanced.course);
-    if(advanced.year)filtered=filtered.filter(x=>String(x.graduationYear)===advanced.year);
-    if(advanced.batch)filtered=filtered.filter(x=>x.batchName===advanced.batch);
+    if (advanced.department || advanced.course || advanced.year || advanced.batch) {
+      filtered = filtered.filter(user => (user.education || []).some(item =>
+        (!advanced.department || item.department === advanced.department) &&
+        (!advanced.course || item.course === advanced.course) &&
+        (!advanced.year || String(item.graduation_year) === advanced.year) &&
+        (!advanced.batch || item.batch_name === advanced.batch)
+      ));
+    }
     if(advanced.organization)filtered=filtered.filter(x=>x.organization===advanced.organization);
     if(advanced.email!=='all')filtered=filtered.filter(x=>x.emailConfirmed===(advanced.email==='confirmed'));
     if(advanced.access==='locked')filtered=filtered.filter(x=>x.locked);if(advanced.access==='deactivated')filtered=filtered.filter(x=>x.deactivated);
     if(advanced.joinedAfter)filtered=filtered.filter(x=>new Date(x.joined)>=new Date(advanced.joinedAfter));
-    if(advanced.activeAfter)filtered=filtered.filter(x=>x.lastSignInAt&&new Date(x.lastSignInAt)>=new Date(advanced.activeAfter));
+    if(advanced.activeAfter)filtered=filtered.filter(x=>x.lastActiveAt&&new Date(x.lastActiveAt)>=new Date(advanced.activeAfter));
 
     setFilteredUsers(filtered);
     setCurrentPage(1);
@@ -159,7 +183,7 @@ export default function Members() {
   }
 
   async function openView(user) {
-    setDialog('view'); setDialogMember(null); setActionError('');
+    setDialog('view'); setDialogMember(null); setVerificationChecks({}); setActionError('');
     try { const { member } = await adminApi(`/api/admin/members/${user.id}`); setDialogMember(member); setVerificationNote(member.verification?.reviewer_note || ''); }
     catch (error) { setActionError(error.message); setDialog(null); }
   }
@@ -208,7 +232,7 @@ export default function Members() {
     if (status !== 'verified' && !verificationNote.trim()) return setActionError('Add a reviewer note before requesting information or rejecting a submission.');
     setSaving(true); setActionError('');
     try {
-      await adminApi(`/api/admin/verifications/${dialogMember.verification.id}`, { method: 'PATCH', body: JSON.stringify({ status, reviewerNote: verificationNote }) });
+      await adminApi(`/api/admin/verifications/${dialogMember.verification.id}`, { method: 'PATCH', body: JSON.stringify({ status, reviewerNote: verificationNote, checks: verificationChecks }) });
       const { member } = await adminApi(`/api/admin/members/${dialogMember.id}`);
       setDialogMember(member); await loadMembers();
     } catch (error) { setActionError(error.message); }
@@ -220,11 +244,11 @@ export default function Members() {
   function verificationPanel() {
     const verification = dialogMember?.verification;
     if (!verification) return <section className="member-verification empty"><h3>No verification submission</h3><p>This member has not uploaded graduation evidence yet.</p></section>;
-    const awaitingDecision = ['pending', 'needs_information'].includes(verification.status);
-    return <section className="member-verification"><header><div><small>Alumni verification</small><h3>Graduation evidence</h3></div><b className={`verification-state ${verification.status}`}>{verification.status.replace('_', ' ')}</b></header><div className="verification-facts"><span><small>Graduation name</small><strong>{verification.graduation_name}</strong></span><span><small>Program</small><strong>{verification.program}</strong></span><span><small>Graduation year</small><strong>{verification.graduation_year}</strong></span></div><button className="verification-document-button" onClick={openVerificationDocument}>📄 <span><strong>{verification.document_filename}</strong><small>Open secure document · link expires in 60 seconds</small></span></button><label>Reviewer notes<textarea value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="Add a note for the alumnus…" /></label>{awaitingDecision ? <footer><button disabled={saving} onClick={() => decideVerification('rejected')}>Reject</button><button disabled={saving} onClick={() => decideVerification('needs_information')}>Request information</button><button className="approve" disabled={saving} onClick={() => decideVerification('verified')}>Approve & verify</button></footer> : <p className="verification-reviewed">Decision recorded{verification.reviewed_at ? ` on ${new Date(verification.reviewed_at).toLocaleDateString()}` : ''}.</p>}</section>;
+    const awaitingDecision = ['pending', 'under_review', 'needs_information'].includes(verification.status);
+    return <section className="member-verification"><header><div><small>Alumni verification</small><h3>Graduation evidence</h3></div><b className={`verification-state ${verification.status}`}>{verification.status.replace('_', ' ')}</b></header><div className="verification-facts"><span><small>Graduation name</small><strong>{verification.graduation_name}</strong></span><span><small>Program</small><strong>{verification.program}</strong></span><span><small>Graduation year</small><strong>{verification.graduation_year}</strong></span></div><button disabled={!canVerify} className="verification-document-button" onClick={openVerificationDocument}>📄 <span><strong>{verification.document_filename}</strong><small>Open secure document · link expires in 60 seconds</small></span></button><label>Reviewer notes<textarea value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="Add a note for the alumnus…" /></label>{awaitingDecision && canVerify && <fieldset><legend>Approval safeguards</legend>{[['name','Name matches'],['program','Program matches'],['year','Graduation year matches'],['readable','Document is readable'],['authentic','Document appears authentic']].map(([key,label])=><label key={key}><input type="checkbox" checked={Boolean(verificationChecks[key])} onChange={e=>setVerificationChecks(current=>({...current,[key]:e.target.checked}))}/>{label}</label>)}</fieldset>}{awaitingDecision && canVerify ? <footer><button disabled={saving} onClick={() => decideVerification('rejected')}>Reject</button><button disabled={saving} onClick={() => decideVerification('needs_information')}>Request information</button><button className="approve" disabled={saving || !['name','program','year','readable','authentic'].every(key=>verificationChecks[key])} onClick={() => decideVerification('verified')}>Approve & verify</button></footer> : <p className="verification-reviewed">{awaitingDecision ? 'Verification permission is required to review this submission.' : 'Decision recorded'}{verification.reviewed_at ? ` on ${new Date(verification.reviewed_at).toLocaleDateString()}` : ''}.</p>}</section>;
   }
 
-  function memberInsightsPanel(){if(!dialogMember)return null;return <section className="member-insights"><h3>Profile &amp; activity</h3><dl><div><dt>Roles</dt><dd>{(dialogMember.roles||[dialogMember.role]).join(', ')}</dd></div><div><dt>Warnings</dt><dd>{dialogMember.warnings_count||0}</dd></div><div><dt>Account source</dt><dd>{dialogMember.account_source||'self registration'}</dd></div><div><dt>Suspension ends</dt><dd>{dialogMember.suspension_expires_at?new Date(dialogMember.suspension_expires_at).toLocaleString():'Not suspended'}</dd></div></dl>{dialogMember.employer&&<p className="member-education"><strong>{dialogMember.employer.organization}</strong><span>{dialogMember.employer.job_title} · {dialogMember.employer.company_email}</span></p>}<div className="member-activity-counts">{Object.entries(dialogMember.activity||{}).map(([key,value])=><span key={key}><strong>{value}</strong>{key}</span>)}</div><h3>Verification history</h3>{dialogMember.verification_history?.length?dialogMember.verification_history.map(x=><p className="member-history-row" key={x.id}><b>{x.status.replace('_',' ')}</b><span>{new Date(x.created_at).toLocaleString()}{x.reviewer_note?` · ${x.reviewer_note}`:''}</span></p>):<p className="member-modal-empty">No verification history.</p>}<h3>Account security</h3><div className="member-security-actions"><button onClick={()=>accountAction('reset')}>Send password reset</button>{!dialogMember.email_confirmed&&<button onClick={()=>accountAction('confirm')}>Resend confirmation</button>}<button onClick={()=>accountAction('roles')}>Change roles</button><button onClick={()=>accountAction('sessions')}>Revoke sessions</button><button onClick={()=>accountAction('suspend')}>Temporary suspension</button><button className="danger" onClick={()=>accountAction(dialogMember.deactivated_at?'restore':'deactivate')}>{dialogMember.deactivated_at?'Restore account':'Deactivate account'}</button></div></section>}
+  function memberInsightsPanel(){if(!dialogMember)return null;return <section className="member-insights"><h3>Profile &amp; activity</h3><dl><div><dt>Roles</dt><dd>{(dialogMember.roles||[dialogMember.role]).join(', ')}</dd></div><div><dt>Warnings</dt><dd>{dialogMember.warnings_count||0}</dd></div><div><dt>Account source</dt><dd>{dialogMember.account_source||'self registration'}</dd></div><div><dt>Suspension ends</dt><dd>{dialogMember.suspension_expires_at?new Date(dialogMember.suspension_expires_at).toLocaleString():'Not suspended'}</dd></div></dl>{dialogMember.employer&&<p className="member-education"><strong>{dialogMember.employer.organization}</strong><span>{dialogMember.employer.job_title} · {dialogMember.employer.company_email}</span></p>}<div className="member-activity-counts">{Object.entries(dialogMember.activity||{}).map(([key,value])=><span key={key}><strong>{value}</strong>{key}</span>)}</div><h3>Verification history</h3>{dialogMember.verification_history?.length?dialogMember.verification_history.map(x=><p className="member-history-row" key={x.id}><b>{x.status.replace('_',' ')}</b><span>{new Date(x.created_at).toLocaleString()}{x.reviewer_note?` · ${x.reviewer_note}`:''}</span></p>):<p className="member-modal-empty">No verification history.</p>}<h3>Account security</h3><div className="member-security-actions"><button onClick={()=>accountAction('reset')}>Send password reset</button>{!dialogMember.email_confirmed&&<button onClick={()=>accountAction('confirm')}>Resend confirmation</button>}<button onClick={()=>accountAction('roles')}>Change roles</button><button disabled title="Session revocation is not configured. Use account suspension to restrict access." onClick={()=>accountAction('sessions')}>Revoke sessions</button><button onClick={()=>accountAction('suspend')}>Temporary suspension</button><button className="danger" onClick={()=>accountAction(dialogMember.deactivated_at?'restore':'deactivate')}>{dialogMember.deactivated_at?'Restore account':'Deactivate account'}</button></div></section>}
 
   const handleExportCSV = () => {
     const definitions={name:['Name',u=>u.name],email:['Email',u=>u.email],roles:['Roles',u=>(u.roles||[u.role]).join('; ')],status:['Status',u=>u.status],department:['Department',u=>u.department],course:['Course',u=>u.course],graduationYear:['Graduation year',u=>u.graduationYear],batchName:['Batch name',u=>u.batchName],organization:['Employer organization',u=>u.organization],joined:['Joined',u=>u.joined],emailConfirmed:['Email confirmed',u=>u.emailConfirmed?'Yes':'No']};
@@ -234,7 +258,7 @@ export default function Members() {
     const csv = [headers, ...rows]
       .map(row =>
         row
-          .map(cell => `"${String(cell).replace(/"/g, '""')}"`)
+          .map(csvCell)
           .join(',')
       )
       .join('\n');
@@ -341,7 +365,7 @@ export default function Members() {
         </div>
       </div>
 
-      <details className="advanced-member-filters"><summary>Advanced filters</summary><div>{[['department','Department'],['course','Course'],['year','Graduation year'],['batch','Batch name'],['organization','Employer organization']].map(([key,label])=><label key={key}>{label}<select value={advanced[key]} onChange={e=>setAdvanced({...advanced,[key]:e.target.value})}><option value="">All</option>{[...new Set(users.map(x=>key==='year'?x.graduationYear:key==='batch'?x.batchName:x[key]).filter(Boolean))].sort().map(x=><option key={x}>{x}</option>)}</select></label>)}<label>Email state<select value={advanced.email} onChange={e=>setAdvanced({...advanced,email:e.target.value})}><option value="all">All</option><option value="confirmed">Confirmed</option><option value="unconfirmed">Unconfirmed</option></select></label><label>Account access<select value={advanced.access} onChange={e=>setAdvanced({...advanced,access:e.target.value})}><option value="all">All</option><option value="locked">Locked</option><option value="deactivated">Deactivated</option></select></label><label>Registered after<input type="date" value={advanced.joinedAfter} onChange={e=>setAdvanced({...advanced,joinedAfter:e.target.value})}/></label><label>Last active after<input type="date" value={advanced.activeAfter} onChange={e=>setAdvanced({...advanced,activeAfter:e.target.value})}/></label><button onClick={()=>setAdvanced({department:'',course:'',year:'',batch:'',organization:'',email:'all',access:'all',joinedAfter:'',activeAfter:''})}>Reset filters</button></div></details>
+      <details className="advanced-member-filters"><summary>Advanced filters</summary><div>{[['department','Department'],['course','Course'],['year','Graduation year'],['batch','Batch name'],['organization','Employer organization']].map(([key,label])=><label key={key}>{label}<select value={advanced[key]} onChange={e=>setAdvanced({...advanced,[key]:e.target.value})}><option value="">All</option>{[...new Set(users.flatMap(x=>key==='organization'?[x.organization]:(x.education||[]).map(item=>item[key==='year'?'graduation_year':key==='batch'?'batch_name':key])).filter(Boolean))].sort().map(x=><option key={x}>{x}</option>)}</select></label>)}<label>Email state<select value={advanced.email} onChange={e=>setAdvanced({...advanced,email:e.target.value})}><option value="all">All</option><option value="confirmed">Confirmed</option><option value="unconfirmed">Unconfirmed</option></select></label><label>Account access<select value={advanced.access} onChange={e=>setAdvanced({...advanced,access:e.target.value})}><option value="all">All</option><option value="locked">Locked</option><option value="deactivated">Deactivated</option></select></label><label>Registered after<input type="date" value={advanced.joinedAfter} onChange={e=>setAdvanced({...advanced,joinedAfter:e.target.value})}/></label><label>Last active after<input type="date" value={advanced.activeAfter} onChange={e=>setAdvanced({...advanced,activeAfter:e.target.value})}/></label><button onClick={()=>setAdvanced({department:'',course:'',year:'',batch:'',organization:'',email:'all',access:'all',joinedAfter:'',activeAfter:''})}>Reset filters</button></div></details>
 
       <div className="members-results-summary">
         <strong>{filteredUsers.length} {filteredUsers.length === 1 ? 'member' : 'members'}</strong>
@@ -390,9 +414,7 @@ export default function Members() {
           >
             <div className="col-user">
               <input className="member-select" type="checkbox" checked={selectedIds.includes(user.id)} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,user.id]:ids.filter(id=>id!==user.id))} aria-label={`Select ${user.name}`}/>
-              <div className="user-avatar">
-                {getInitials(user.name)}
-              </div>
+              <MemberAvatar src={user.avatarUrl} initials={getInitials(user.name)} />
 
               <div className="user-info">
                 <div className="user-name">
@@ -576,7 +598,7 @@ export default function Members() {
       {dialog && <div className="member-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}><section className="member-modal" role="dialog" aria-modal="true" aria-label={`${dialog} member`}>
         <header><div><small>Member directory</small><h2>{dialog === 'add' ? 'Add a member' : dialog === 'edit' ? 'Edit member' : 'Member profile'}</h2></div><button onClick={() => setDialog(null)} aria-label="Close">×</button></header>
         {actionError && <p className="member-dialog-error" role="alert">{actionError}</p>}
-        {dialog === 'view' ? (dialogMember ? <div className="member-profile-view"><div className="member-profile-identity"><div className="user-avatar">{getInitials(`${dialogMember.first_name || ''} ${dialogMember.last_name || ''}`)}</div><span><strong>{dialogMember.first_name} {dialogMember.last_name}</strong><small>{dialogMember.email}</small></span></div><dl><div><dt>Role</dt><dd>{dialogMember.role}</dd></div><div><dt>Status</dt><dd>{dialogMember.status}</dd></div><div><dt>Email</dt><dd>{dialogMember.email_confirmed ? 'Confirmed' : 'Not confirmed'}</dd></div><div><dt>Access</dt><dd>{dialogMember.locked ? 'Locked' : 'Active'}</dd></div><div><dt>Joined</dt><dd>{formatJoined(dialogMember.created_at).date}</dd></div><div><dt>Last sign in</dt><dd>{dialogMember.last_sign_in_at ? new Date(dialogMember.last_sign_in_at).toLocaleString() : 'Never'}</dd></div></dl><h3>Education</h3>{dialogMember.education?.length ? dialogMember.education.map((item) => <p className="member-education" key={item.id}><strong>{item.course || item.degree || 'Education record'}</strong><span>{item.department || ''}{item.graduation_year ? ` · Class of ${item.graduation_year}` : ''}</span></p>) : <p className="member-modal-empty">No education records added.</p>}</div> : <p className="member-modal-empty">Loading member…</p>) : <form className="member-form" onSubmit={saveMember}><div className="member-form-grid"><label>First name<input required maxLength="100" value={memberForm.first_name} onChange={(e) => setMemberForm({...memberForm,first_name:e.target.value})}/></label><label>Last name<input required maxLength="100" value={memberForm.last_name} onChange={(e) => setMemberForm({...memberForm,last_name:e.target.value})}/></label></div><label>Email address<input required type="email" value={memberForm.email} onChange={(e) => setMemberForm({...memberForm,email:e.target.value})}/></label>{dialog === 'add' && <label>Temporary password<input required minLength="12" maxLength="128" type="password" value={memberForm.password} onChange={(e) => setMemberForm({...memberForm,password:e.target.value})}/><small>At least 12 characters. Share it securely with the member.</small></label>}<div className="member-form-grid"><label>Role<select value={memberForm.role} onChange={(e) => setMemberForm({...memberForm,role:e.target.value})}>{['alumni','employer','staff','admin'].map(item=><option key={item}>{item}</option>)}</select></label><label>Account status<select value={memberForm.status} onChange={(e) => setMemberForm({...memberForm,status:e.target.value})}>{['pending','verified','suspended'].map(item=><option key={item}>{item}</option>)}</select></label></div>{dialog === 'add' && <label className="member-check"><input type="checkbox" checked={memberForm.email_confirmed} onChange={(e) => setMemberForm({...memberForm,email_confirmed:e.target.checked})}/> Mark email as confirmed</label>}<footer><button type="button" onClick={() => setDialog(null)}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : dialog === 'add' ? 'Create member' : 'Save changes'}</button></footer></form>}
+        {dialog === 'view' ? (dialogMember ? <div className="member-profile-view"><div className="member-profile-identity"><MemberAvatar key={dialogMember.id} src={dialogMember.avatar_url} initials={getInitials(`${dialogMember.first_name || ''} ${dialogMember.last_name || ''}`)} /><span><strong>{dialogMember.first_name} {dialogMember.last_name}</strong><small>{dialogMember.email}</small></span></div><dl><div><dt>Role</dt><dd>{dialogMember.role}</dd></div><div><dt>Status</dt><dd>{dialogMember.status}</dd></div><div><dt>Email</dt><dd>{dialogMember.email_confirmed ? 'Confirmed' : 'Not confirmed'}</dd></div><div><dt>Access</dt><dd>{dialogMember.locked ? 'Locked' : 'Active'}</dd></div><div><dt>Joined</dt><dd>{formatJoined(dialogMember.created_at).date}</dd></div><div><dt>Last sign in</dt><dd>{dialogMember.last_sign_in_at ? new Date(dialogMember.last_sign_in_at).toLocaleString() : 'Never'}</dd></div></dl><h3>Education</h3>{dialogMember.education?.length ? dialogMember.education.map((item) => <p className="member-education" key={item.id}><strong>{item.course || item.degree || 'Education record'}</strong><span>{item.department || ''}{item.graduation_year ? ` · Class of ${item.graduation_year}` : ''}</span></p>) : <p className="member-modal-empty">No education records added.</p>}</div> : <p className="member-modal-empty">Loading member…</p>) : <form className="member-form" onSubmit={saveMember}><div className="member-form-grid"><label>First name<input required maxLength="100" value={memberForm.first_name} onChange={(e) => setMemberForm({...memberForm,first_name:e.target.value})}/></label><label>Last name<input required maxLength="100" value={memberForm.last_name} onChange={(e) => setMemberForm({...memberForm,last_name:e.target.value})}/></label></div><label>Email address<input required type="email" value={memberForm.email} onChange={(e) => setMemberForm({...memberForm,email:e.target.value})}/></label>{dialog === 'add' && <label>Temporary password<input required minLength="12" maxLength="128" type="password" value={memberForm.password} onChange={(e) => setMemberForm({...memberForm,password:e.target.value})}/><small>At least 12 characters. Share it securely with the member.</small></label>}<div className="member-form-grid"><label>Role<select value={memberForm.role} onChange={(e) => setMemberForm({...memberForm,role:e.target.value})}>{['alumni','employer','staff','admin'].map(item=><option key={item}>{item}</option>)}</select></label><label>Account status<select value={memberForm.status} onChange={(e) => setMemberForm({...memberForm,status:e.target.value})}>{['pending','verified','suspended'].map(item=><option key={item}>{item}</option>)}</select></label></div>{dialog === 'add' && <label className="member-check"><input type="checkbox" checked={memberForm.email_confirmed} onChange={(e) => setMemberForm({...memberForm,email_confirmed:e.target.checked})}/> Mark email as confirmed</label>}<footer><button type="button" onClick={() => setDialog(null)}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : dialog === 'add' ? 'Create member' : 'Save changes'}</button></footer></form>}
         {dialog === 'view' && dialogMember && verificationPanel()}
         {dialog === 'view' && dialogMember && memberInsightsPanel()}
       </section></div>}

@@ -1,10 +1,24 @@
+import { createAsyncCache } from '../../../shared/asyncCache.mjs';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 export function LinkedText({text=''}) { return text.split(/((?:https?:\/\/|www\.)[^\s<>]+)/gi).map((part,i)=> /^(https?:\/\/|www\.)/i.test(part) ? <a key={i} href={/^www\./i.test(part)?`https://${part}`:part} target="_blank" rel="noopener noreferrer">{part}</a>:part); }
-export async function mediaUrl(path) { if(!path)return ''; if(/^https:\/\//i.test(path))return path; const {data,error}=await supabase.storage.from('chat-attachments').createSignedUrl(path,3600); if(error)throw error; return data.signedUrl; }
+const signedMediaCache = createAsyncCache({ ttlMs: 55 * 60_000, maxEntries: 300 });
+let mediaCacheUser;
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (mediaCacheUser !== session?.user?.id) { signedMediaCache.clear(); mediaCacheUser = session?.user?.id; }
+});
+export async function mediaUrl(path) {
+  if (!path) return '';
+  if (/^https:\/\//i.test(path)) return path;
+  return signedMediaCache.get(path, async () => {
+    const { data, error } = await supabase.storage.from('chat-attachments').createSignedUrl(path, 3600);
+    if (error) throw error;
+    return data.signedUrl;
+  });
+}
 export function useChatSettings(chatKey) {
  const [settings,setSettings]=useState({});
- useEffect(()=>{let active=true; const load=async()=>{if(!chatKey)return;const {data}=await supabase.from('chat_settings').select('*').eq('chat_key',chatKey).maybeSingle();if(active)setSettings(data||{});};setSettings({});load();const timer=setInterval(load,5000);return()=>{active=false;clearInterval(timer);};},[chatKey]);
+ useEffect(()=>{let active=true; let running=false; const load=async()=>{if(!chatKey||document.hidden||running)return;running=true;try{const {data,error}=await supabase.from('chat_settings').select('*').eq('chat_key',chatKey).maybeSingle();if(active&&!error)setSettings(data||{});}finally{running=false}};setSettings({});load();const timer=setInterval(load,30000);document.addEventListener('visibilitychange',load);return()=>{active=false;clearInterval(timer);document.removeEventListener('visibilitychange',load);};},[chatKey]);
  return [settings,setSettings];
 }
 

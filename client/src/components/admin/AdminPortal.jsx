@@ -48,8 +48,13 @@ export default function AdminPortal() {
       }
     }
     checkAccess();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => checkAccess());
-    return () => { mounted = false; subscription.unsubscribe(); };
+    // Run outside the auth callback so getSession does not wait on its own auth lock.
+    let accessTimer;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      clearTimeout(accessTimer);
+      accessTimer = setTimeout(() => { if (mounted) checkAccess(); }, 0);
+    });
+    return () => { mounted = false; clearTimeout(accessTimer); subscription.unsubscribe(); };
   }, []);
 
   async function signIn(event) {

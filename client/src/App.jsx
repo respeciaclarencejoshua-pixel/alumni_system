@@ -246,8 +246,11 @@ function App() {
       return undefined;
     }
 
-    let active = true;
+    let active = true, running = false;
     const loadNotifications = async () => {
+      if (!active || document.hidden || running) return;
+      running = true;
+      try {
       const [community, account] = await Promise.all([
         supabase.from('notifications').select('*').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(100),
         supabase.from('account_notifications').select('*').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(100),
@@ -256,6 +259,7 @@ function App() {
         ...(community.data || []).map((item) => ({ ...item, _source: 'notifications' })),
         ...(account.data || []).map((item) => ({ ...item, _source: 'account_notifications' })),
       ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 200));
+      } finally { running = false; }
     };
     loadNotifications();
 
@@ -264,11 +268,13 @@ function App() {
       { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
       loadNotifications
     ).on('postgres_changes', { event: '*', schema: 'public', table: 'account_notifications', filter: `recipient_id=eq.${user.id}` }, loadNotifications).subscribe();
-    const notificationTimer=setInterval(()=>{if(!document.hidden)loadNotifications();},15000);
+    const notificationTimer=setInterval(()=>{if(!document.hidden)loadNotifications();},30000);
+    document.addEventListener('visibilitychange',loadNotifications);
 
     return () => {
       active = false;
       clearInterval(notificationTimer);
+      document.removeEventListener('visibilitychange',loadNotifications);
       supabase.removeChannel(channel);
     };
   }, [user?.id]);

@@ -12,11 +12,14 @@ export async function adminApi(path, options = {}) {
       ...options.headers,
     },
   });
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => {
+    throw new Error('The server returned an invalid response. Please try again.');
+  });
   if (!response.ok) {
     const error = new Error(data.error || 'The admin request failed.');
     error.code = data.code || 'ADMIN_REQUEST_FAILED';
     error.status = response.status;
+    error.fields = data.fields;
     throw error;
   }
   return data;
