@@ -149,6 +149,32 @@ function App() {
 
   const unreadNotifications = notifications.filter((notification) => !notification.read_at).length;
 
+  useEffect(() => {
+    if (!siteNavOpen) return;
+    const media = window.matchMedia('(max-width: 1100px)');
+    if (!media.matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const nav = document.getElementById('site-navigation');
+    const buttons = () => [...nav.querySelectorAll('button')].filter(button => button.getClientRects().length);
+    buttons()[0]?.focus();
+    const trapFocus = event => {
+      if (event.key !== 'Tab') return;
+      const items = buttons();
+      if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus(); }
+      else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
+    };
+    const resize = event => { if (!event.matches) setSiteNavOpen(false); };
+    document.addEventListener('keydown', trapFocus);
+    media.addEventListener('change', resize);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', trapFocus);
+      media.removeEventListener('change', resize);
+      document.getElementById('site-menu-toggle')?.focus();
+    };
+  }, [siteNavOpen]);
+
   function notificationText(notification) {
     if (notification._source === 'account_notifications') return notification.subject || notification.message;
     if (notification.kind === 'comment') return `${notification.actor_name} commented on your post.`;
@@ -406,19 +432,25 @@ function App() {
         </a>
 
         <button id="site-menu-toggle" className="site-menu-toggle" type="button" aria-expanded={siteNavOpen} aria-controls="site-navigation" onClick={() => { setSiteNavOpen(open => !open); setAccountMenuOpen(false); setNotificationsOpen(false); }}>
-          <span aria-hidden="true">&#9776;</span> {siteNavOpen ? 'Close menu' : 'Menu'}
+          <span aria-hidden="true">{siteNavOpen ? '×' : '☰'}</span> {siteNavOpen ? 'Close menu' : 'Menu'}
         </button>
+        {siteNavOpen && <button className="site-nav-backdrop" aria-label="Close navigation" tabIndex={-1} onClick={() => setSiteNavOpen(false)} />}
         <nav id="site-navigation" className={`main-nav ${siteNavOpen ? 'is-open' : ''}`} aria-label="Primary navigation">
+          <div className="site-drawer-heading"><span>NDDU <strong>ALUMNI</strong></span><button type="button" onClick={() => setSiteNavOpen(false)} aria-label="Close menu">Close <span aria-hidden="true">&times;</span></button></div>
+          <p className="site-drawer-intro">Your alumni community</p>
           {navItems.map((item) => (
             <button
               key={item}
+              aria-label={item === 'Feed' ? 'Community' : item}
               className={activeTab === item || (item === 'Directory' && activeTab === 'Alumni groups') ? 'active' : ''}
               aria-current={activeTab === item ? 'page' : undefined}
               onClick={() => { setActiveTab(item); setSiteNavOpen(false); window.scrollTo({ top: 0 }); }}
             >
-              {item === 'Feed' ? 'Community' : item}
+              <span className="site-nav-copy"><span>{item === 'Feed' ? 'Community' : item}</span><small className="site-nav-description">{{ Home: 'Welcome and latest updates', 'About NDDU': 'Learn about your university', Feed: 'Posts and conversations', Directory: 'Find alumni and batch groups', Opportunities: 'Jobs and career opportunities', Events: 'Upcoming gatherings and activities', Gallery: 'Photos from our community' }[item]}</small></span>
+              <span className="site-nav-marker" aria-hidden="true">{activeTab === item ? '✓' : '›'}</span>
             </button>
           ))}
+          <p className="site-drawer-footer">Stay connected. Find your community.</p>
         </nav>
 
         <div className="header-actions">

@@ -36,7 +36,7 @@ function apiData(url) {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const report = [];
   try {
-    for (const width of (process.env.FEED_ONLY ? [390, 820, 1440] : [320, 390, 768, 820, 1024, 1440])) {
+    for (const width of (process.env.REVIEW_WIDTHS ? process.env.REVIEW_WIDTHS.split(',').map(Number) : process.env.FEED_ONLY ? [390, 820, 1440] : [320, 390, 768, 820, 1024, 1440])) {
       const context = await browser.newContext({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
       await context.addInitScript(({ key, session, reviewOrigin }) => { if (location.origin === reviewOrigin && !location.search.includes('signedout')) localStorage.setItem(key, JSON.stringify(session)); }, { key: `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`, session, reviewOrigin });
       let commentAttempts = 0;
@@ -216,6 +216,8 @@ function apiData(url) {
       }
       if (width <= 1100) {
         await page.getByRole('button', { name: 'Admin menu' }).click();
+        await page.locator('.admin-nav button').first().waitFor({ state: 'visible' });
+        await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, `${width}-admin-menu.png`) });
         await page.keyboard.press('Escape');
         await page.locator('.admin-sidebar').waitFor({ state: 'hidden' });

@@ -80,7 +80,7 @@ export default function AdminDashboard({ onSignOut, access }) {
     {navOpen && <button className="admin-nav-backdrop" aria-label="Close admin navigation" tabIndex={-1} onClick={() => setNavOpen(false)} />}
     <aside ref={navRef} className="admin-sidebar" id="admin-navigation">
       <button className="admin-nav-close" onClick={() => setNavOpen(false)}>Close menu <span aria-hidden="true">&times;</span></button>
-      <div className="admin-sidebar-brand"><strong>Admin Portal</strong><small>System control center</small></div>
+      <div className="admin-sidebar-brand"><strong>Admin menu</strong><small>Choose a section to manage</small></div>
       <nav className="admin-nav" aria-label="Admin navigation">{availablePages.map((page) => <button className={activePage === page.label ? 'selected' : ''} aria-current={activePage === page.label ? 'page' : undefined} key={page.label} onClick={() => { setActivePage(page.label); setNavOpen(false); }}><span aria-hidden="true">{page.icon}</span>{page.label}{page.label==='Help & Support'&&supportCount>0&&<b className="nav-count" aria-label={`${supportCount} open support requests`}>{supportCount}</b>}{taskCounts[page.label] > 0 && <b className="nav-count" aria-label={`${taskCounts[page.label]} items need attention`}>{taskCounts[page.label]}</b>}</button>)}</nav>
       <div className="admin-user"><b>{initials}</b><span><strong>{displayName}</strong><small>{roleName}</small></span></div>
       <button className="admin-report" onClick={onSignOut}>Sign out</button>
