@@ -45,9 +45,9 @@ test('changing or removing a personal reaction preserves other users’ aggregat
   assert.equal(post.comment_count, 10000);
   assert.deepEqual(post.feed_comments, []);
   const switched = applyOwnReaction(post, 'viewer', 'support');
-  assert.deepEqual(switched.reaction_counts, { like: 499, support: 13, celebrate: 0 });
+  assert.deepEqual(switched.reaction_counts, { like: 499, support: 13, celebrate: 0, laugh: 0, wow: 0, sad: 0 });
   const removed = applyOwnReaction(switched, 'viewer', 'support');
-  assert.deepEqual(removed.reaction_counts, { like: 499, support: 12, celebrate: 0 });
+  assert.deepEqual(removed.reaction_counts, { like: 499, support: 12, celebrate: 0, laugh: 0, wow: 0, sad: 0 });
   assert.deepEqual(removed.feed_reactions, []);
   assert.equal(post.reaction_counts.like, 500);
 });
@@ -55,4 +55,17 @@ test('changing or removing a personal reaction preserves other users’ aggregat
 test('merging paginated comments preserves local additions without duplicates', () => {
   const rows = mergeRows([{ id: 'a', content: 'old' }, { id: 'local' }], [{ id: 'a', content: 'updated' }, { id: 'b' }]);
   assert.deepEqual(rows, [{ id: 'a', content: 'updated' }, { id: 'local' }, { id: 'b' }]);
+});
+
+ test('new reaction counts survive switching and removing a reaction', async () => {
+  const {db, requests} = captureQueries();
+  await feedPageQuery(db, 'viewer');
+  for (const type of ['laugh', 'wow', 'sad']) {
+    assert.equal(requests[0].searchParams.get(`reaction_${type}s.reaction`), `eq.${type}`);
+    const post = normalizeFeedPost({ [`reaction_${type}s`]: [{ count: 40 }] });
+    const reacted = applyOwnReaction(post, 'viewer', type);
+    assert.equal(reacted.reaction_counts[type], 41);
+    assert.equal(applyOwnReaction(reacted, 'viewer', type).reaction_counts[type], 40);
+    assert.equal(applyOwnReaction(reacted, 'viewer', 'like').reaction_counts[type], 40);
+  }
 });

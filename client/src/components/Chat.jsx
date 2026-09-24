@@ -1,3 +1,5 @@
+import { useMessageInputSize } from '../lib/useMessageInputSize.js';
+import MediaPickerButton from './MediaPickerButton.jsx';
 import { createAsyncCache } from '../../../shared/asyncCache.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
@@ -6,7 +8,6 @@ import {ChatMenu, ChatCover, useChatSettings, mediaUrl} from './ChatExtras.jsx';
 import BatchConversation from './BatchConversation.jsx';
 import DirectMessageBubble from './DirectMessageBubble.jsx';
 
-const EMOJIS = ['😀','😂','🥰','😍','😊','😎','😭','😡','👍','👏','🙏','🎉','❤️','💚','🔥','✨','✅','🎓','🤝','💯'];
 const nameOf = (p) => [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim() || 'Alumni member';
 const initialsOf = (p) => `${p?.first_name?.[0] || ''}${p?.last_name?.[0] || ''}`.toUpperCase() || 'A';
 
@@ -39,11 +40,6 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
   const [messages, setMessages] = useState([]);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
-  const [picker, setPicker] = useState(null);
-  const [gifQuery, setGifQuery] = useState('');
-  const [gifs, setGifs] = useState([]);
-  const [gifLoading, setGifLoading] = useState(false);
-  const [gifError, setGifError] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const endRef = useRef(null);
@@ -116,7 +112,7 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
     return () => { clearTimeout(refreshTimer); realtimeReady.current=false; supabase.removeChannel(channel); };
   }, [user.id, selected?.id]);
   useEffect(() => { if(followDirectRef.current){const log=endRef.current?.parentElement;if(log)log.scrollTop=log.scrollHeight;} }, [messages, minimized]);
-  useEffect(() => { if (picker === 'gif') loadTrendingGifs(); }, [picker]);
+
 
   const unread = people.reduce((sum, p) => sum + Number(p.unread_count || 0), 0);
   const filtered = useMemo(() => people.filter((p) => nameOf(p).toLowerCase().includes(search.toLowerCase())), [people, search]);
@@ -135,7 +131,7 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
       }
       const {error:sendError}=await supabase.from('direct_messages').insert({sender_id:user.id,recipient_id:recipientId,body:payload.body||'',...payload,...(replyId?{reply_to:replyId}:{})});
       if(sendError)throw sendError;
-      if(activePersonRef.current===recipientId){setDraft('');setDirectReply(null);setPicker(null);await loadMessages(recipientId);}
+      if(activePersonRef.current===recipientId){setDraft('');setDirectReply(null);await loadMessages(recipientId);}
       return true;
     }catch(sendError){
       if(activePersonRef.current===recipientId){
@@ -172,37 +168,10 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
     if (!sent) await supabase.storage.from('chat-attachments').remove([path]);
   }
 
-  async function searchGifs(event) {
-    event.preventDefault();
-    if (!gifQuery.trim()) return;
-    setGifLoading(true); setGifError(''); setGifs([]);
-    try {
-      const response = await fetch(`/api/gifs?q=${encodeURIComponent(gifQuery.trim())}`);
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(json?.meta?.msg || `GIPHY rejected the request (${response.status}).`);
-      setGifs(json.gifs || []);
-      if (!json.gifs?.length) setGifError('No GIFs found. Try another search.');
-    } catch (requestError) {
-      setGifError(requestError.message || 'Could not connect to GIPHY.');
-    } finally { setGifLoading(false); }
-  }
-
-  async function loadTrendingGifs() {
-    setGifLoading(true); setGifError(''); setGifs([]); setGifQuery('');
-    try {
-      const response = await fetch('/api/gifs');
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(json?.meta?.msg || `GIPHY rejected the request (${response.status}).`);
-      setGifs(json.gifs || []);
-      if (!json.gifs?.length) setGifError('Trending GIFs are unavailable right now.');
-    } catch (requestError) {
-      setGifError(requestError.message || 'Could not connect to GIPHY.');
-    } finally { setGifLoading(false); }
-  }
-
-  function openConversation(person) { setSelectedBatch(null); setSelected(person); setMinimized(false); setDirectoryOpen(false); setPicker(null); }
+  function openConversation(person) { setSelectedBatch(null); setSelected(person); setMinimized(false); setDirectoryOpen(false);  }
   async function blockConversation(){if(!selected||!window.confirm(`Block ${nameOf(selected)}?`))return;const{error:blockError}=await supabase.rpc('manage_alumni_block',{p_target:selected.id,p_block:true});if(blockError)setError(blockError.message);else{setPeople(current=>current.filter(person=>person.id!==selected.id));setSelected(null)}}
 
+  useMessageInputSize(directInputRef, draft, `${selected?.id || ''}:${minimized}`);
   return <div className="messenger-root">
     {directoryOpen && <aside className="messenger-directory">
       <header><div><h2>Chats</h2><small>{people.length} registered accounts</small></div><button onClick={() => setDirectoryOpen(false)} aria-label="Close chats">×</button></header>
@@ -218,9 +187,8 @@ export default function Chat({ user, profile, contact, onContactHandled, batchCo
       {!minimized && <>
         <ChatCover path={settings.cover}/><div className="messenger-messages batch-messenger-body direct-message-list">{messages.length ? messages.map(m=><DirectMessageBubble myName={settings.nicknames?.[user.id]} key={m.id} message={m} mine={m.sender_id===user.id} person={settings.nicknames?.[selected.id]?{...selected,first_name:settings.nicknames[selected.id],last_name:''}:selected} parent={messages.find(p=>p.id===m.reply_to)} reactions={directReactions.filter(r=>r.message_id===m.id)} busy={actionBusy} onReply={message=>{setDirectReply(message);directInputRef.current?.focus();}} onAction={directAction}/>) : <div className="message-empty"><Avatar person={selected}/><strong>{nameOf(selected)}</strong><p>You can now message each other.</p></div>}<div ref={endRef}/></div>
         {error && <p className="messenger-error">{error}</p>}
-        {picker === 'emoji' && <div className="emoji-picker">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => { setDraft((v) => v + emoji); setPicker(null); }}>{emoji}</button>)}</div>}
-        {picker === 'gif' && <div className="gif-picker"><form onSubmit={searchGifs}><input value={gifQuery} onChange={(e) => setGifQuery(e.target.value)} placeholder="Search GIPHY" autoFocus/><button disabled={gifLoading}>{gifLoading ? '…' : 'Search'}</button></form><div className="gif-picker-label"><strong>{gifQuery.trim() ? 'Search GIFs' : 'Trending today'}</strong><span>Tap a GIF to send</span></div>{gifError && <p className="gif-error">{gifError}</p>}<div>{gifLoading ? Array.from({ length: 6 }, (_, index) => <i className="gif-skeleton" key={index}/>) : gifs.map((gif) => <button key={gif.id} onClick={() => insertMessage({ body: '', message_type: 'gif', attachment_url: gif.images.fixed_height_small.url, attachment_name: gif.title })}><img src={gif.images.fixed_height_small.url} alt={gif.title}/></button>)}</div><small className="giphy-credit">Powered by GIPHY</small></div>}
-        <form className="messenger-composer" onSubmit={sendText}>{directReply&&<div className="batch-reply-compose"><div><strong>Replying to {directReply.sender_id===user.id?'yourself':nameOf(selected)}</strong><span>{messages.find(m=>m.id===directReply.id)?.unsent_at?'Message unsent':directReply.body||directReply.attachment_name||'Attachment'}</span></div><button type="button" aria-label="Cancel reply" onClick={()=>setDirectReply(null)}>×</button></div>}<div className="composer-tools"><button type="button" onClick={() => fileRef.current?.click()} title="Send photo or file">＋</button><button type="button" onClick={() => setPicker(picker === 'emoji' ? null : 'emoji')} title="Emoji">☺</button><button type="button" className="gif-button" onClick={() => setPicker(picker === 'gif' ? null : 'gif')}>GIF</button></div><div className="composer-input"><textarea ref={directInputRef} disabled={sending} aria-label="Message" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Aa" rows="1" maxLength="2000" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form.requestSubmit(); } }}/><button disabled={!draft.trim() || sending} aria-label="Send">➤</button></div><input ref={fileRef} hidden type="file" accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={uploadFile}/></form>
+        <form className="messenger-composer" onSubmit={sendText}>{directReply&&<div className="batch-reply-compose"><div><strong>Replying to {directReply.sender_id===user.id?'yourself':nameOf(selected)}</strong><span>{messages.find(m=>m.id===directReply.id)?.unsent_at?'Message unsent':directReply.body||directReply.attachment_name||'Attachment'}</span></div><button type="button" aria-label="Cancel reply" onClick={()=>setDirectReply(null)}>×</button></div>}<div className="composer-tools"><button type="button" onClick={() => fileRef.current?.click()} title="Send photo or file">＋</button><MediaPickerButton kind="emoji" disabled={sending} onSelect={emoji => setDraft(value => (value + emoji).slice(0,2000))} />
+<MediaPickerButton kind="gif" disabled={sending} onSelect={item => insertMessage({ body: '', message_type: 'gif', attachment_url: item.images.fixed_height_small.url, attachment_name: item.title })} /></div><div className="composer-input"><textarea ref={directInputRef} disabled={sending} aria-label="Message" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Aa" rows="1" maxLength="2000" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form.requestSubmit(); } }}/><button disabled={!draft.trim() || sending} aria-label="Send">➤</button></div><input ref={fileRef} hidden type="file" accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={uploadFile}/></form>
       </>}
     </section>}
 

@@ -1,0 +1,30 @@
+.feed-post .comment-composer > .comment-attachments { position: relative; display: block; margin-top: 10px; }
+.feed-post:has(.comment-emoji-popover) { z-index: 50; }
+.comment-picker.comment-emoji-popover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 60; width: min(360px, 100%); margin: 0; padding: 0; border: 0; border-radius: 12px; background: #fff; box-shadow: 0 8px 28px rgb(1 43 9 / 20%); }
+.comment-emoji-popover .EmojiPickerReact { max-height: min(360px, calc(100dvh - 100px)); }
+.comment-attachment-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.feed-post .comment-attachments button:not(.EmojiPickerReact *) { width: auto; min-height: 44px; padding: 8px 12px; border: 1px solid #c5d7cb; border-radius: 8px; background: #fff; color: #075c2d; font: inherit; font-size: .9375rem; font-weight: 600; cursor: pointer; }
+.feed-post .comment-attachments button:not(.EmojiPickerReact *):hover, .feed-post .comment-attachments button:not(.EmojiPickerReact *)[aria-expanded=true] { background: #edf5ef; border-color: #075c2d; }
+.feed-post .comment-attachment-toolbar button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-height: 44px; padding: 10px; border: 1px solid transparent; border-radius: 50%; background: #f2f6f3; color: #46664e; }
+.feed-post .comment-attachment-toolbar button:hover, .feed-post .comment-attachment-toolbar button[aria-expanded=true] { background: #e2eee5; border-color: #b9d2c1; color: #075c2d; }
+.comment-attachment-toolbar svg { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.comment-attachments button:not(.EmojiPickerReact *):disabled { opacity: .6; cursor: default; }
+.comment-attachments input[hidden] { display: none; }
+.comment-picker { margin-top: 12px; padding: 12px; border: 1px solid #d0ddd4; border-radius: 10px; background: #f8faf8; }
+.comment-picker header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.comment-emoji-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: 6px; max-width: 420px; }
+.feed-post .comment-emoji-grid button { padding: 4px; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; font-size: 1.5rem; }
+.comment-gif-search { display: flex; gap: 8px; margin-bottom: 12px; }
+.comment-gif-search input { width: 100%; min-width: 0; }
+.comment-gif-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); gap: 8px; max-height: 280px; overflow-y: auto; }
+.feed-post .comment-gif-grid button { padding: 0; overflow: hidden; }
+.comment-gif-grid img { display: block; width: 100%; height: 100px; object-fit: cover; }
+.comment-picker > small { display: block; margin-top: 10px; color: #526b5b; }
+.comment-attachment-previews { display: grid; gap: 8px; margin-top: 12px; }
+.comment-attachment-previews > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid #d0ddd4; border-radius: 8px; }
+.comment-attachment-previews img { width: 80px; height: 70px; border-radius: 6px; object-fit: contain; background: #edf3ef; }
+.comment-attachment-previews span { flex: 1; min-width: 100px; overflow-wrap: anywhere; }
+.comment-attachment-previews strong, .comment-attachment-previews small { display: block; }
+.comment-attachment-previews small, .comment-attachment-help { color: #526b5b; font-size: .8125rem; line-height: 1.5; }
+.comment-attachment-help { margin: 8px 0 0; }
+.comment-file-link { display: inline-block; max-width: 100%; margin: 8px 0; padding: 12px; border: 1px solid #c5d7cb; border-radius: 8px; color: #075c2d; background: #f3f7f4; overflow-wrap: anywhere; }

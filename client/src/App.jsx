@@ -86,6 +86,7 @@ function App() {
   const [authView, setAuthView] = useState(null);
   const [user, setUser] = useState(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [siteNavOpen, setSiteNavOpen] = useState(false);
   const [verificationOpen, setVerificationOpen] = useState(false);
   const [alumniVerificationStatus, setVerificationStatus] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -140,12 +141,18 @@ function App() {
     setAccountMenuOpen(false);
   }
 
+  useEffect(() => {
+    const closeMenu = event => { if (event.key === 'Escape') { if (document.querySelector('.main-nav.is-open')) document.getElementById('site-menu-toggle')?.focus(); setSiteNavOpen(false); setAccountMenuOpen(false); setNotificationsOpen(false); } };
+    document.addEventListener('keydown', closeMenu);
+    return () => document.removeEventListener('keydown', closeMenu);
+  }, []);
+
   const unreadNotifications = notifications.filter((notification) => !notification.read_at).length;
 
   function notificationText(notification) {
     if (notification._source === 'account_notifications') return notification.subject || notification.message;
     if (notification.kind === 'comment') return `${notification.actor_name} commented on your post.`;
-    const reaction = notification.reaction === 'celebrate' ? 'celebrated' : notification.reaction === 'support' ? 'supported' : 'liked';
+    const reaction = notification.reaction === 'celebrate' ? 'celebrated' : notification.reaction === 'support' ? 'supported' : notification.reaction === 'laugh' ? 'laughed at' : notification.reaction === 'wow' ? 'reacted with Wow to' : notification.reaction === 'sad' ? 'reacted with Sad to' : 'liked';
     return `${notification.actor_name} ${reaction} your post.`;
   }
 
@@ -364,6 +371,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-content" href="#top">Skip to main content</a>
       <div className="institution-bar">
         <div>
           <a href="tel:+63835524444">(083) 552 4444</a>
@@ -397,12 +405,16 @@ function App() {
           </span>
         </a>
 
-        <nav className="main-nav" aria-label="Primary navigation">
+        <button id="site-menu-toggle" className="site-menu-toggle" type="button" aria-expanded={siteNavOpen} aria-controls="site-navigation" onClick={() => { setSiteNavOpen(open => !open); setAccountMenuOpen(false); setNotificationsOpen(false); }}>
+          <span aria-hidden="true">&#9776;</span> {siteNavOpen ? 'Close menu' : 'Menu'}
+        </button>
+        <nav id="site-navigation" className={`main-nav ${siteNavOpen ? 'is-open' : ''}`} aria-label="Primary navigation">
           {navItems.map((item) => (
             <button
               key={item}
               className={activeTab === item || (item === 'Directory' && activeTab === 'Alumni groups') ? 'active' : ''}
-              onClick={() => setActiveTab(item)}
+              aria-current={activeTab === item ? 'page' : undefined}
+              onClick={() => { setActiveTab(item); setSiteNavOpen(false); window.scrollTo({ top: 0 }); }}
             >
               {item === 'Feed' ? 'Community' : item}
             </button>
@@ -447,6 +459,7 @@ function App() {
                   <section className="notification-panel" aria-label="Notifications">
                     <header>
                       <h2>Notifications</h2>
+                      <button type="button" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)}>Close</button>
                       {unreadNotifications > 0 && <button type="button" onClick={markAllNotificationsRead}>Mark all as read</button>}
                     </header>
                     {notifications.length === 0 ? (
@@ -489,7 +502,8 @@ function App() {
                   }
                 >
                   <AccountAvatar />
-                  <span>{isSuperAdmin ? 'Super Admin' : accountFirstName}</span>
+                  <span className="account-desktop-label">{isSuperAdmin ? 'Super Admin' : accountFirstName}</span>
+                  <span className="account-mobile-label">Account</span>
                   <i>⌄</i>
                 </button>
 

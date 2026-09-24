@@ -381,7 +381,7 @@ with check (auth.uid() = user_id);
 create table if not exists public.feed_reactions (
   post_id uuid not null references public.feed_posts(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
-  reaction text not null check (reaction in ('like', 'celebrate', 'support')),
+  reaction text not null check (reaction in ('like', 'celebrate', 'support', 'laugh', 'wow', 'sad')),
   created_at timestamptz not null default now(),
   primary key (post_id, user_id)
 );
@@ -445,7 +445,7 @@ create table if not exists public.notifications (
   actor_id uuid not null references public.profiles(id) on delete cascade,
   post_id uuid not null references public.feed_posts(id) on delete cascade,
   kind text not null check (kind in ('reaction', 'comment')),
-  reaction text check (reaction is null or reaction in ('like', 'celebrate', 'support')),
+  reaction text check (reaction is null or reaction in ('like', 'celebrate', 'support', 'laugh', 'wow', 'sad')),
   actor_name text not null,
   source_key text not null,
   read_at timestamptz,
@@ -1116,7 +1116,7 @@ values
   ('profile-avatars', 'profile-avatars', true, 2097152,
     array['image/jpeg', 'image/png', 'image/webp']),
   ('feed-media', 'feed-media', true, 10485760,
-    array['image/jpeg', 'image/png', 'image/webp']),
+    array['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain']),
   ('verification-documents', 'verification-documents', false, 10485760,
     array['application/pdf', 'image/jpeg', 'image/png']),
   ('event-images', 'event-images', true, 10485760,
@@ -1849,8 +1849,17 @@ grant delete on public.notifications,public.account_notifications to authenticat
 create or replace function public.enforce_community_rate_limit() returns trigger language plpgsql security definer set search_path=public as $$
 declare recent_count integer; actor uuid; maximum integer; window_start timestamptz;
 begin
-  actor:=case tg_table_name when 'feed_posts' then new.user_id when 'feed_comments' then new.user_id when 'direct_messages' then new.sender_id when 'content_reports' then new.reporter_id else auth.uid() end;
-  if actor<>auth.uid() then raise exception 'Invalid actor.'; end if;
+  -- Use separate statements: each trigger row only has its own table's fields.
+  if tg_table_name in ('feed_posts', 'feed_comments') then
+    actor := new.user_id;
+  elsif tg_table_name = 'direct_messages' then
+    actor := new.sender_id;
+  elsif tg_table_name = 'content_reports' then
+    actor := new.reporter_id;
+  else
+    raise exception 'Unsupported community table: %', tg_table_name;
+  end if;
+  if actor is null or actor is distinct from auth.uid() then raise exception 'Invalid actor.'; end if;
   if tg_table_name='feed_posts' then maximum:=10;window_start:=now()-interval '5 minutes';select count(*) into recent_count from public.feed_posts where user_id=actor and created_at>=window_start;
   elsif tg_table_name='feed_comments' then maximum:=30;window_start:=now()-interval '5 minutes';select count(*) into recent_count from public.feed_comments where user_id=actor and created_at>=window_start;
   elsif tg_table_name='direct_messages' then maximum:=60;window_start:=now()-interval '1 minute';select count(*) into recent_count from public.direct_messages where sender_id=actor and created_at>=window_start;

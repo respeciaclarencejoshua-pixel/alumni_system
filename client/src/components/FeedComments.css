@@ -1,0 +1,17 @@
+.feed-post .comments-section { padding-top: 12px; }
+.comment-send-error { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #e6b8b4; border-radius: 6px; background: #fff3f1; color: #8a2119; font-size: .9375rem; line-height: 1.5; overflow-wrap: anywhere; }
+.feed-post .comments-section .feed-comment-list { display: grid; gap: 8px; margin: 0 0 16px; }
+.feed-post .comments-section .feed-comment { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; border: 0; background: transparent; }
+.feed-post .comments-section .comment-avatar-button { display: block; flex: 0 0 40px; width: 40px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: 50%; overflow: hidden; background: #edf5ef; cursor: pointer; }
+.comment-avatar-button > img, .comment-avatar-button > .mention-initials { display: grid; place-items: center; width: 100%; height: 100%; object-fit: cover; background: #e4eee7; color: #075c2d; font-size: .875rem; font-weight: 700; }
+.comment-body { flex: 1; min-width: 0; }
+.comment-byline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; color: #65786b; }
+.feed-post .comments-section .comment-author-name { min-height: 0; padding: 0; border: 0; background: transparent; color: #213e2c; font: inherit; font-size: .9375rem; font-weight: 700; line-height: 1.5; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.comment-author-name:hover { text-decoration: underline; }
+.feed-post .comment-byline time { font-size: .8125rem; color: #65786b; }
+.feed-post .comments-section .comment-content { margin: 1px 0 0; color: #263d2d; font-size: 1rem; line-height: 1.5; white-space: pre-wrap; }
+.feed-post .comments-section .comment-reply-button { min-height: 36px; padding: 6px 8px; margin-left: -8px; border: 0; border-radius: 6px; color: #46664e; font: inherit; font-size: .875rem; font-weight: 600; background: transparent; }
+.feed-post .comments-section .comment-reply-button:hover { background: #edf5ef; color: #075c2d; }
+.feed-post .comments-section .feed-comment.comment-reply { margin-left: 20px; padding-left: 12px; border-left: 2px solid #dce8df; }
+@media (pointer: coarse) { .feed-post .comments-section .comment-author-name, .feed-post .comments-section .comment-reply-button { min-height: 44px; } }
+@media (max-width: 480px) { .feed-post .comments-section .feed-comment.comment-reply { margin-left: 10px; padding-left: 8px; } }

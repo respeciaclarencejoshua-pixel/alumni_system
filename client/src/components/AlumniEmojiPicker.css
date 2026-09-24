@@ -1,0 +1,14 @@
+.alumni-emoji-picker { width: 100%; max-width: 360px; min-width: 0; }
+.post-emoji-picker { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 45; width: min(360px, calc(100vw - 72px)); }
+.alumni-emoji-picker .EmojiPickerReact { --epr-highlight-color: #075c2d; --epr-hover-bg-color: #edf5ef; --epr-focus-bg-color: #e0eee4; --epr-text-color: #46664e; --epr-search-input-bg-color: #f2f6f3; --epr-picker-border-color: #cbd9ce; --epr-category-icon-active-color: #075c2d; --epr-picker-border-radius: 12px; --epr-emoji-size: 28px; --epr-emoji-padding: 7px; max-width: 100%; }
+.feed-post .alumni-emoji-picker .EmojiPickerReact button, .post-creator .alumni-emoji-picker .EmojiPickerReact button { width: auto; min-height: 32px; padding: 0; border: 0; background-color: transparent; color: #46664e; box-shadow: none; }
+.feed-post .alumni-emoji-picker .EmojiPickerReact button:hover, .post-creator .alumni-emoji-picker .EmojiPickerReact button:hover { background-color: #edf5ef; }
+.alumni-emoji-picker .EmojiPickerReact .epr-emoji { min-height: 42px; }
+.alumni-emoji-picker .EmojiPickerReact input { border-radius: 22px; font: inherit; }
+.alumni-emoji-picker .EmojiPickerReact header { display: block; margin: 0; }
+.alumni-emoji-picker .EmojiPickerReact .epr-category-nav { padding: 8px; border-top: 1px solid #e1e9e3; }
+.feed-post .alumni-emoji-picker .EmojiPickerReact .epr-cat-btn,
+.post-creator .alumni-emoji-picker .EmojiPickerReact .epr-cat-btn { width: 28px; height: 32px; min-width: 28px; min-height: 32px; flex: 0 0 28px; }
+.alumni-emoji-picker .EmojiPickerReact .epr-category-nav { display: flex; gap: 4px; justify-content: space-between; overflow-x: auto; padding: 6px 8px; }
+.feed-post .alumni-emoji-picker .EmojiPickerReact .epr-search-container input,
+.post-creator .alumni-emoji-picker .EmojiPickerReact .epr-search-container input { padding-left: 36px; padding-right: 30px; }

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import './AdminDashboard.css';
 import { adminApi } from '../../lib/adminApi.js';
 
@@ -36,6 +36,27 @@ export default function AdminDashboard({ onSignOut, access }) {
   const [taskCounts, setTaskCounts] = useState({});
   const [supportCount,setSupportCount]=useState(0);
   const [navOpen, setNavOpen] = useState(false);
+  const navRef = useRef(null);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    const mobile = window.matchMedia('(max-width: 1100px)');
+    if (!navOpen || !mobile.matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const nodes = () => [...navRef.current.querySelectorAll('button:not([disabled]), a[href]')].filter(node => node.getClientRects().length);
+    nodes()[0]?.focus();
+    function onKey(event) {
+      if (event.key === 'Escape') setNavOpen(false);
+      if (event.key !== 'Tab') return;
+      const items = nodes(), first = items[0], last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+    document.addEventListener('keydown', onKey);
+    const onResize = event => { if (!event.matches) setNavOpen(false); };
+    mobile.addEventListener('change', onResize);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', onKey); mobile.removeEventListener('change', onResize); menuRef.current?.focus(); };
+  }, [navOpen]);
 
   useEffect(() => {
     if (!availablePages.some((page) => page.label === activePage)) setActivePage(availablePages[0]?.label);
@@ -54,10 +75,13 @@ export default function AdminDashboard({ onSignOut, access }) {
   const roleName = (access?.permission?.admin_role || user.role || 'staff').replaceAll('_', ' ');
 
   return <div className={`admin-shell ${navOpen ? 'nav-open' : ''}`}>
-    <button className="admin-mobile-menu" type="button" aria-expanded={navOpen} aria-controls="admin-navigation" onClick={() => setNavOpen((open) => !open)}>☰ <span>Menu</span></button>
-    <aside className="admin-sidebar" id="admin-navigation">
+    <a className="skip-content" href="#admin-main">Skip to admin content</a>
+    <div className="admin-mobile-bar"><button ref={menuRef} className="admin-mobile-menu" type="button" aria-expanded={navOpen} aria-controls="admin-navigation" onClick={() => setNavOpen((open) => !open)}>☰ <span>Admin menu</span></button><strong>{activePage}</strong></div>
+    {navOpen && <button className="admin-nav-backdrop" aria-label="Close admin navigation" tabIndex={-1} onClick={() => setNavOpen(false)} />}
+    <aside ref={navRef} className="admin-sidebar" id="admin-navigation">
+      <button className="admin-nav-close" onClick={() => setNavOpen(false)}>Close menu <span aria-hidden="true">&times;</span></button>
       <div className="admin-sidebar-brand"><strong>Admin Portal</strong><small>System control center</small></div>
-      <nav className="admin-nav" aria-label="Admin navigation">{availablePages.map((page) => <button className={activePage === page.label ? 'selected' : ''} key={page.label} onClick={() => { setActivePage(page.label); setNavOpen(false); }}><span aria-hidden="true">{page.icon}</span>{page.label}{page.label==='Help & Support'&&supportCount>0&&<b className="nav-count" aria-label={`${supportCount} open support requests`}>{supportCount}</b>}{taskCounts[page.label] > 0 && <b className="nav-count" aria-label={`${taskCounts[page.label]} items need attention`}>{taskCounts[page.label]}</b>}</button>)}</nav>
+      <nav className="admin-nav" aria-label="Admin navigation">{availablePages.map((page) => <button className={activePage === page.label ? 'selected' : ''} aria-current={activePage === page.label ? 'page' : undefined} key={page.label} onClick={() => { setActivePage(page.label); setNavOpen(false); }}><span aria-hidden="true">{page.icon}</span>{page.label}{page.label==='Help & Support'&&supportCount>0&&<b className="nav-count" aria-label={`${supportCount} open support requests`}>{supportCount}</b>}{taskCounts[page.label] > 0 && <b className="nav-count" aria-label={`${taskCounts[page.label]} items need attention`}>{taskCounts[page.label]}</b>}</button>)}</nav>
       <div className="admin-user"><b>{initials}</b><span><strong>{displayName}</strong><small>{roleName}</small></span></div>
       <button className="admin-report" onClick={onSignOut}>Sign out</button>
     </aside>

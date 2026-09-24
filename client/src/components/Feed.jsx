@@ -5,13 +5,23 @@ import './Feed.css';
 import './FeedEnhancements.css';
 import './SocialProfile.css';
 import './FeedPostMenu.css';
+import './FeedAuthor.css';
+import './FeedReactions.css';
+import './FeedComments.css';
+import CommentTools from './CommentTools.jsx';
+import MediaPickerButton from './MediaPickerButton.jsx';
+import { commentFileType } from '../lib/commentAttachments.js';
 
-const emojiChoices = ['\u{1F600}', '\u{1F389}', '\u{2764}\u{FE0F}', '\u{1F64F}', '\u{1F44F}', '\u{1F31F}'];
 const reactionChoices = [
   { id: 'like', icon: 'like', emoji: '\u{1F44D}', label: 'Like' },
   { id: 'celebrate', icon: 'celebrate', emoji: '\u{1F389}', label: 'Celebrate' },
   { id: 'support', icon: 'support', emoji: '\u{2764}\u{FE0F}', label: 'Support' },
 ];
+reactionChoices.push(
+  { id: 'laugh', emoji: '\u{1F606}', label: 'Haha' },
+  { id: 'wow', emoji: '\u{1F62E}', label: 'Wow' },
+  { id: 'sad', emoji: '\u{1F622}', label: 'Sad' },
+);
 const PAGE_SIZE = FEED_PAGE_SIZE;
 const reportReasons = ['spam','harassment','inappropriate','misinformation','privacy','copyright','scam','other'];
 
@@ -92,7 +102,6 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
-  const [showEmojis, setShowEmojis] = useState(false);
   const [postGif, setPostGif] = useState('');
   const [savedOnly, setSavedOnly] = useState(false);
   const [activeHashtag, setActiveHashtag] = useState('');
@@ -104,13 +113,11 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
   const [replyingTo, setReplyingTo] = useState({});
   const [people, setPeople] = useState([]);
   const [mentionPost, setMentionPost] = useState('');
-  const [emojiPickerPost, setEmojiPickerPost] = useState('');
-  const [gifPickerPost, setGifPickerPost] = useState('');
-  const [gifs, setGifs] = useState([]);
-  const [gifError, setGifError] = useState('');
   const [selectedMention, setSelectedMention] = useState(null);
   const [mentionProfileState, setMentionProfileState] = useState('idle');
   const [connectionBusy, setConnectionBusy] = useState(false);
+  const [dismissedPreview, setDismissedPreview] = useState(null);
+  const [previewBusy, setPreviewBusy] = useState(null);
   const [busyPost, setBusyPost] = useState('');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -120,6 +127,8 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
   const commentRequests = useRef(new Set());
   const [commentsLoading, setCommentsLoading] = useState({});
   const [commentErrors, setCommentErrors] = useState({});
+  const [commentSendErrors, setCommentSendErrors] = useState({});
+  const commentSubmissions = useRef(new Set());
   const [reporting, setReporting] = useState(null);
   const [reportReason, setReportReason] = useState('spam');
   const [reportDetails, setReportDetails] = useState('');
@@ -188,7 +197,22 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
     return () => { feedGeneration.current += 1; feedLoading.current = false; commentRequests.current.clear(); };
   }, [user?.id]);
   useEffect(() => { if(user?.id) supabase.from('hidden_feed_posts').select('post_id').eq('user_id',user.id).then(({data})=>setHiddenPostIds((data||[]).map(row=>row.post_id))); }, [user?.id]);
-  useEffect(() => { if(!selectedMention)return; const close=(event)=>event.key==='Escape'&&setSelectedMention(null); window.addEventListener('keydown',close); return()=>window.removeEventListener('keydown',close); }, [selectedMention]);
+  useEffect(() => {
+    if (!selectedMention?.id) return;
+    const previousFocus = document.activeElement;
+    const dialog = document.querySelector('.mention-profile-dialog');
+    dialog?.querySelector('button')?.focus();
+    const close = event => {
+      if (event.key === 'Escape') setSelectedMention(null);
+      if (event.key !== 'Tab') return;
+      const buttons = [...dialog.querySelectorAll('button:not([disabled])')].filter(node => node.getClientRects().length);
+      const first = buttons[0], last = buttons.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    window.addEventListener('keydown', close);
+    return () => { window.removeEventListener('keydown', close); previousFocus?.focus(); };
+  }, [selectedMention?.id]);
   useEffect(() => {
     if(!selectedMention?.id || selectedMention._detailsLoaded)return;
     setMentionProfileState('loading');
@@ -198,7 +222,23 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
       setMentionProfileState(error?'unavailable':'ready');
     });
   }, [selectedMention?.id, selectedMention?._detailsLoaded]);
-  useEffect(() => { if (verificationStatus === 'verified') supabase.rpc('list_chat_profiles').then(({ data, error }) => { if (error) setMessage('Alumni mentions require the latest Supabase schema.'); else setPeople((data || []).filter((person) => [person.first_name, person.last_name].some((name) => name?.trim())).sort((a,b) => `${a.first_name||''} ${a.last_name||''}`.localeCompare(`${b.first_name||''} ${b.last_name||''}`))); }); }, [verificationStatus]);
+  useEffect(() => {
+    if (verificationStatus !== 'verified') return;
+    let active = true;
+    Promise.all([
+      supabase.rpc('list_chat_profiles'),
+      supabase.rpc('get_public_alumni_profile', { p_profile_id: user.id }).maybeSingle(),
+    ]).then(([directory, own]) => {
+      if (!active) return;
+      if (directory.error) setMessage('Alumni profile details could not be loaded.');
+      setPeople(current => {
+        const merged = new Map(current.map(person => [person.id, person]));
+        [...(directory.data || []), ...(own.data ? [own.data] : [])].forEach(person => merged.set(person.id, person));
+        return [...merged.values()];
+      });
+    });
+    return () => { active = false; };
+  }, [verificationStatus, user?.id]);
   useEffect(() => {
     const visibleAuthors = posts.flatMap((post) => [{ id: post.user_id, author_name: post.author_name }, ...(post.feed_comments || []).map((comment) => ({ id: comment.user_id, author_name: comment.author_name }))]);
     setPeople((current) => {
@@ -232,7 +272,7 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
     const start = input?.selectionStart ?? content.length;
     const end = input?.selectionEnd ?? content.length;
     setContent(`${content.slice(0, start)}${emoji}${content.slice(end)}`);
-    setShowEmojis(false);
+
     window.requestAnimationFrame(() => {
       input?.focus();
       input?.setSelectionRange(start + emoji.length, start + emoji.length);
@@ -301,29 +341,41 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
   }
 
   async function addComment(post) {
-    if (verificationStatus !== 'verified') return setMessage('Complete alumni verification before commenting.');
+    const fail = message => setCommentSendErrors(current => ({ ...current, [post.id]: message }));
+    if (commentSubmissions.current.has(post.id)) return;
+    if (!user?.id) return fail('Please sign in to comment.');
+    if (verificationStatus !== 'verified') return fail('Complete alumni verification before commenting.');
+    if (post.comments_locked) return fail('Comments have been locked by a moderator.');
     const draft = commentDrafts[post.id]?.trim();
-    if (!user?.id) return setMessage('Please sign in to comment.');
-    if (post.comments_locked) return setMessage('Comments have been locked by a moderator.');
-    const file = commentFiles[post.id]; const gifUrl = commentGifs[post.id];
+    const file = commentFiles[post.id], gifUrl = commentGifs[post.id];
     if (!draft && !file && !gifUrl) return;
+    if (file && (!commentFileType(file) || file.size > 10 * 1024 * 1024)) return fail('Choose a JPG, PNG, WebP, PDF, or TXT file up to 10 MB.');
+    commentSubmissions.current.add(post.id);
     setBusyPost(post.id);
+    fail('');
     let mediaPath = null;
-    if (file) {
-      if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { setBusyPost(''); return setMessage('Comment photos must be JPG, PNG, or WebP and no larger than 10 MB.'); }
-      mediaPath = `${user.id}/comments/${crypto.randomUUID()}.${file.name.split('.').pop().toLowerCase()}`;
-      const upload = await supabase.storage.from('feed-media').upload(mediaPath, file, { contentType:file.type });
-      if (upload.error) { setBusyPost(''); return setMessage(upload.error.message); }
+    try {
+      if (file) {
+        mediaPath = `${user.id}/comments/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120)}`;
+        const upload = await withTimeout(supabase.storage.from('feed-media').upload(mediaPath, file, { contentType: commentFileType(file) }));
+        if (upload.error) throw upload.error;
+      }
+      const { data, error } = await withTimeout(supabase.from('feed_comments').insert({ post_id: post.id, user_id: user.id, author_name: displayName, content: draft || null, parent_comment_id: replyingTo[post.id]?.id || null, media_path: mediaPath, gif_url: gifUrl || null }).select().single(), 'The server has not confirmed your comment. Refresh comments before retrying to avoid posting twice.');
+      if (error) throw error;
+      replacePost(post.id, current => ({ ...current, feed_comments: mergeRows(current.feed_comments, [data]), comment_count: current.comment_count + 1 }));
+      setCommentDrafts(current => ({ ...current, [post.id]: '' }));
+      setCommentFiles(current => ({ ...current, [post.id]: null }));
+      setCommentGifs(current => ({ ...current, [post.id]: '' }));
+      setReplyingTo(current => ({ ...current, [post.id]: null }));
+    } catch (error) {
+      const detail = error.code === '42501'
+        ? 'Your account does not currently have permission to comment. Check your verification and account status.'
+        : error.message || 'Could not send your comment. Check your connection and try again.';
+      fail(`${detail}${error.code ? ` (Code: ${error.code})` : ''}`);
+    } finally {
+      commentSubmissions.current.delete(post.id);
+      setBusyPost(current => current === post.id ? '' : current);
     }
-    const { data, error } = await supabase.from('feed_comments').insert({ post_id: post.id, user_id: user.id, author_name: displayName, content: draft || null, parent_comment_id:replyingTo[post.id]?.id || null, media_path:mediaPath, gif_url:gifUrl || null }).select().single();
-    if (error) setMessage('Comments will be available after the updated database schema is applied.');
-    else {
-      replacePost(post.id, (current) => ({ ...current, feed_comments: mergeRows(current.feed_comments, [data]), comment_count: current.comment_count + 1 }));
-      setCommentDrafts((current) => ({ ...current, [post.id]: '' }));
-      setCommentFiles((current) => ({ ...current, [post.id]: null })); setCommentGifs((current) => ({ ...current, [post.id]: '' })); setReplyingTo((current) => ({ ...current, [post.id]: null }));
-    }
-    if (error && mediaPath) await supabase.storage.from('feed-media').remove([mediaPath]);
-    setBusyPost('');
   }
 
   const hasMentionQuery = (value) => /(?:^|\s)@[^@\s]*$/.test(value);
@@ -333,7 +385,18 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
     return !query || [person.first_name, person.last_name].some((name) => name?.trim().toLowerCase().startsWith(query));
   };
   function addMention(postId, person) { const name=[person.first_name,person.last_name].filter(Boolean).join(' '); setCommentDrafts((current)=>({ ...current,[postId]:(current[postId]||'').replace(/@[^@\s]*$/,`@${name} `) })); setMentionPost(''); }
-  async function openGifPicker(postId) { setGifPickerPost(postId); setGifError(''); setGifs([]); try { const response=await fetch('/api/gifs'); const json=await response.json().catch(()=>({})); if(!response.ok)throw new Error(json.error||'GIFs are unavailable.'); setGifs(json.gifs||[]); if(!json.gifs?.length)setGifError('No GIFs are available right now.'); } catch(error) { setGifError(error.message); } }
+
+  async function connectFromPreview(person) {
+    if (previewBusy || person.id === user?.id) return;
+    if (person.connection_status === 'friends') { setSelectedMention(person); return; }
+    setPreviewBusy(person.id);
+    try {
+      const { data, error } = await supabase.rpc('manage_alumni_connection', { p_target: person.id, p_action: person.connection_status === 'incoming' ? 'accept' : 'request' });
+      if (error) throw error;
+      setPeople(current => current.map(item => item.id === person.id ? { ...item, connection_status: data } : item));
+    } catch (error) { setMessage(error.message || 'Unable to update this connection. Please try again.'); }
+    finally { setPreviewBusy(null); }
+  }
 
   async function changeConnection() {
     if(!selectedMention?.id||connectionBusy)return;
@@ -403,16 +466,12 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
             <div className="creator-actions">
               <div className="creator-buttons">
                 <button type="button" className="creator-btn" onClick={() => mediaInput.current?.click()}><Icon name="image" />Add photo</button>
-                <div className="emoji-control">
-                  <button type="button" className="creator-btn" aria-expanded={showEmojis} onClick={() => setShowEmojis((open) => !open)}><Icon name="smile" />Add emoji</button>
-                  {showEmojis && <div className="emoji-picker" aria-label="Choose an emoji">{emojiChoices.map((emoji) => <button type="button" key={emoji} onClick={() => insertEmoji(emoji)} aria-label={`Insert ${emoji}`}>{emoji}</button>)}</div>}
-                </div>
-                <button type="button" className="creator-btn" onClick={()=>openGifPicker('composer')}>GIF</button>
+                <MediaPickerButton kind="emoji" className="creator-btn" label="Add emoji" disabled={submitting} onSelect={insertEmoji}><Icon name="smile" />Add emoji</MediaPickerButton>
+                <MediaPickerButton kind="gif" className="creator-btn" disabled={submitting} onSelect={item => setPostGif(item.images.fixed_height_small.url)}>GIF</MediaPickerButton>
               </div>
               <button className="post-button" type="button" disabled={submitting} onClick={publish}>{submitting ? 'Publishing...' : 'Publish post'}</button>
             </div>
             {mentionPost==='composer'&&<div className="mention-picker" role="listbox" aria-label="Mention an alumnus">{people.filter((person)=>person.id!==user.id&&mentionMatches(person,content)).slice(0,8).map((person)=><MentionOption person={person} key={person.id} onSelect={()=>{const name=[person.first_name,person.last_name].filter(Boolean).join(' ');setContent((value)=>value.replace(/@[^@\s]*$/,`@${name} `));setMentionPost('')}}/>)}{!people.some((person)=>person.id!==user.id&&mentionMatches(person,content))&&<p>No matching alumni found.</p>}</div>}
-            {gifPickerPost==='composer'&&<div className="comment-gif-picker">{gifError&&<p className="gif-picker-error" role="alert">{gifError}</p>}{gifs.map((gif)=><button type="button" key={gif.id} onClick={()=>{setPostGif(gif.images.fixed_height_small.url);setGifPickerPost('')}}><img src={gif.images.fixed_height_small.url} alt={gif.title||'Choose GIF'}/></button>)}</div>}
             {postGif&&<div className="selected-gif"><img src={postGif} alt="Selected GIF"/><button type="button" onClick={()=>setPostGif('')}>Remove GIF</button></div>}
             {message && <p className={`feed-message ${message === 'Your post is now visible to the alumni community.' ? 'feed-message-success' : ''}`} role="status">{message}</p>}
           </div>
@@ -430,10 +489,33 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
             })).filter((choice) => choice.count > 0);
             const saved = post.feed_saved_posts.some((item) => item.user_id === user?.id);
             const commentsOpen = openComments.includes(post.id);
+            const author = people.find(person => person.id === post.user_id) || { id: post.user_id, first_name: post.author_name, avatar_url: post.author_avatar_url };
+            const batchLabel = [author.graduation_year && `Batch ${author.graduation_year}`, author.batch_name].filter(Boolean).join(' \u00b7 ') || 'Batch details not provided';
             return <article key={post.id} className="feed-post">
               <header className="post-header">
-                <img src={post.author_avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author_name)}&background=012b09&color=ffffff&bold=true`} alt="" className="author-avatar" />
-                <div><h2>{post.author_name}</h2><p>NDDU Alumni</p><time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{formatDate(post.created_at)}{post.edited_at?' · Edited':''}</time></div>
+                <div className="feed-author-identity" onMouseLeave={() => setDismissedPreview(null)}>
+                  <button type="button" className="feed-author-button" aria-label={`View ${post.author_name}'s profile`} aria-haspopup="dialog" onClick={() => setSelectedMention(author)}>
+                    <PersonAvatar person={author} />
+                    <span><strong>{post.author_name}</strong><span className="feed-author-batch">{batchLabel}</span></span>
+                  </button>
+                  <time dateTime={post.created_at} title={new Date(post.created_at).toLocaleString()}>{formatDate(post.created_at)}{post.edited_at ? ' \u00b7 Edited' : ''}</time>
+                  {dismissedPreview !== post.id && <div className="feed-author-preview">
+                    <button type="button" className="author-preview-close" aria-label="Close profile preview" onClick={() => setDismissedPreview(post.id)}>&times;</button>
+                    <div className="author-preview-summary">
+                      <button type="button" className="author-preview-photo" aria-label={`View ${post.author_name}'s full profile`} onClick={() => setSelectedMention(author)}><PersonAvatar person={author} /></button>
+                      <div className="author-preview-copy"><strong>{post.author_name}</strong>
+                        <p className="author-preview-batch">{batchLabel}</p>
+                        {author.course && <p>{author.course}</p>}
+                        {author.mutual_count != null && <p className="author-preview-social">{author.mutual_count} mutual {Number(author.mutual_count) === 1 ? 'friend' : 'friends'}</p>}
+                      </div>
+                    </div>
+                    <div className="author-preview-actions">
+                      {author.id !== user?.id && <><button type="button" disabled={previewBusy === author.id || author.connection_status === 'requested'} onClick={() => connectFromPreview(author)}>{previewBusy === author.id ? 'Please wait...' : author.connection_status === 'friends' ? 'Friends' : author.connection_status === 'incoming' ? 'Accept request' : author.connection_status === 'requested' ? 'Request sent' : 'Add friend'}</button><button type="button" className="author-preview-message" onClick={() => { onMessage?.(author); setDismissedPreview(post.id); }}>Message</button></>}
+                      <button type="button" className="author-preview-action" aria-label="View profile" title="View full profile" onClick={() => setSelectedMention(author)}>{author.id === user?.id ? 'View profile' : <span aria-hidden="true">&hellip;</span>}</button>
+                    </div>
+                  </div>}
+
+                </div>
                 <div className="post-options"><button type="button" className="post-options-trigger" aria-label={`Options for ${post.author_name}'s post`} aria-expanded={postMenu===post.id} onClick={()=>setPostMenu(current=>current===post.id?'':post.id)}><Icon name="dots"/></button>{postMenu===post.id&&<div className="post-options-menu">{post.user_id===user?.id?<><button onClick={()=>beginEdit(post)}>Edit post</button><button className="danger" onClick={()=>deletePost(post)}>Delete post</button></>:<button onClick={()=>hidePost(post)}>Hide post</button>}<button onClick={()=>{toggleSave(post);setPostMenu('')}}>{saved?'Remove from saved':'Save post'}</button>{post.edited_at&&<button onClick={()=>showEditHistory(post)}>View edit history</button>}{post.user_id!==user?.id&&<button onClick={()=>{setReporting(post);setPostMenu('')}}>Report post</button>}</div>}</div>
               </header>
               {post.content && <PostText text={post.content} people={people} onHashtag={setActiveHashtag} onMention={setSelectedMention} />}
@@ -445,8 +527,8 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
               </div>
               <div className="post-actions">
                 <div className="reaction-menu-wrap">
-                  <button disabled={post.reactions_disabled} title={post.reactions_disabled?'Reactions are disabled on this post':''} className={currentReaction ? 'active' : ''} aria-expanded={openReactionPost === post.id} onClick={() => setOpenReactionPost((current) => current === post.id ? '' : post.id)}><Icon name={currentReactionChoice?.icon || 'like'} />{post.reactions_disabled?'Reactions off':currentReactionChoice?.label || 'React'}</button>
-                  <div className={`reaction-menu ${openReactionPost === post.id ? 'open' : ''}`} aria-label="Choose a reaction">{reactionChoices.map((choice) => <button key={choice.id} type="button" title={choice.label} aria-label={choice.label} disabled={busyPost === post.id} className={currentReaction === choice.id ? 'active' : ''} aria-pressed={currentReaction === choice.id} onClick={() => react(post, choice.id)}><span className="reaction-emoji" aria-hidden="true">{choice.emoji}</span></button>)}</div>
+                  <button disabled={post.reactions_disabled} title={post.reactions_disabled?'Reactions are disabled on this post':''} className={currentReaction ? 'active' : ''} aria-expanded={openReactionPost === post.id} onClick={() => setOpenReactionPost((current) => current === post.id ? '' : post.id)}><span aria-hidden="true">{currentReactionChoice ? <span className="reaction-emoji">{currentReactionChoice.emoji}</span> : <Icon name="like" />}</span>{post.reactions_disabled?'Reactions off':currentReactionChoice?.label || 'React'}</button>
+                  <div className={`reaction-menu ${openReactionPost === post.id ? 'open' : ''}`} aria-label="Choose a reaction">{reactionChoices.map((choice) => <button key={choice.id} type="button" title={choice.label} aria-label={choice.label} disabled={busyPost === post.id} className={currentReaction === choice.id ? 'active' : ''} aria-pressed={currentReaction === choice.id} onClick={() => react(post, choice.id)}><span className="reaction-emoji" aria-hidden="true">{choice.emoji}</span><span className="reaction-label">{choice.label}</span></button>)}</div>
                 </div>
                 <button className={commentsOpen ? 'active' : ''} onClick={() => toggleComments(post)}><Icon name="comment" />{post.comments_locked?'Comments locked':'Comment'}</button>
                 <button className={saved ? 'active' : ''} disabled={busyPost === post.id} onClick={() => toggleSave(post)}><Icon name="bookmark" />{saved ? 'Saved' : 'Save'}</button>
@@ -455,15 +537,28 @@ export default function Feed({ user, profile, verificationStatus, onMessage, onV
                 {commentsLoading[post.id] && <p role="status">Loading comments...</p>}
                 {commentErrors[post.id] && <p role="alert">{commentErrors[post.id]} <button onClick={() => loadComments(post)}>Retry</button></p>}
                 {post.comments_has_more && <button disabled={commentsLoading[post.id]} onClick={() => loadComments(post)}>Load more comments</button>}
-                {post.feed_comments.length ? <ul>{post.feed_comments.map((comment) => <li key={comment.id} className={comment.parent_comment_id?'comment-reply':''}><strong>{comment.author_name}</strong>{comment.content&&<RichText text={comment.content} people={people} onMention={setSelectedMention} className="comment-content"/>}{comment.media_path&&<img className="comment-media" src={supabase.storage.from('feed-media').getPublicUrl(comment.media_path).data.publicUrl} alt="Comment attachment"/>}{comment.gif_url&&<img className="comment-media" src={comment.gif_url} alt="GIF reply"/>}<footer><time dateTime={comment.created_at}>{formatDate(comment.created_at)}</time><button type="button" onClick={()=>{setReplyingTo((current)=>({...current,[post.id]:comment}));setCommentDrafts((current)=>({...current,[post.id]:`@${comment.author_name} `}))}}>Reply</button></footer></li>)}</ul> : post.comments_loaded ? <p className="no-comments">No comments yet. Start the conversation.</p> : null}
-                {post.comments_locked?<p className="no-comments">A moderator has locked new comments on this post.</p>:<div className="comment-composer"><label htmlFor={`comment-${post.id}`}>Write a comment</label>{replyingTo[post.id]&&<div className="replying-banner"><span>Replying to {replyingTo[post.id].author_name}</span><button type="button" onClick={()=>setReplyingTo((current)=>({...current,[post.id]:null}))}>Cancel</button></div>}<div className="comment-input-row"><input id={`comment-${post.id}`} value={commentDrafts[post.id] || ''} maxLength="1000" placeholder="Write a comment. Type @ to mention someone." onChange={(event)=>{setCommentDrafts((current)=>({...current,[post.id]:event.target.value}));setMentionPost(hasMentionQuery(event.target.value)?post.id:'')}} onKeyDown={(event) => { if (event.key === 'Enter') addComment(post); }} /><button aria-label="Post comment" disabled={busyPost === post.id || (!commentDrafts[post.id]?.trim()&&!commentFiles[post.id]&&!commentGifs[post.id])} onClick={() => addComment(post)}><Icon name="send" /></button></div>{mentionPost===post.id&&<div className="mention-picker mention-picker-under-input" role="listbox" aria-label="Mention an alumnus">{people.filter((person)=>person.id!==user.id&&mentionMatches(person,commentDrafts[post.id]||'')).slice(0,8).map((person)=><MentionOption person={person} key={person.id} onSelect={()=>addMention(post.id,person)}/>) }{!people.some((person)=>person.id!==user.id&&mentionMatches(person,commentDrafts[post.id]||''))&&<p>No matching alumni found.</p>}</div>}<div className="comment-tools"><label className="comment-tool">Photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event)=>setCommentFiles((current)=>({...current,[post.id]:event.target.files?.[0]||null}))}/></label><button type="button" onClick={()=>setEmojiPickerPost(emojiPickerPost===post.id?'':post.id)}>Emoji</button><button type="button" onClick={()=>openGifPicker(post.id)}>GIF</button></div>{emojiPickerPost===post.id&&<div className="comment-emoji-picker">{emojiChoices.map((emoji)=><button type="button" key={emoji} onClick={()=>{setCommentDrafts((current)=>({...current,[post.id]:`${current[post.id]||''}${emoji}`}));setEmojiPickerPost('')}}>{emoji}</button>)}</div>}{commentFiles[post.id]&&<p className="comment-selection">Photo: {commentFiles[post.id].name}</p>}{commentGifs[post.id]&&<p className="comment-selection">GIF selected</p>}{gifPickerPost===post.id&&<div className="comment-gif-picker">{gifError&&<p className="gif-picker-error" role="alert">{gifError}</p>}{gifs.map((gif)=><button type="button" key={gif.id} onClick={()=>{setCommentGifs((current)=>({...current,[post.id]:gif.images.fixed_height_small.url}));setGifPickerPost('')}}><img src={gif.images.fixed_height_small.url} alt={gif.title||'Choose GIF'}/></button>)}</div>}</div>}
+                {post.feed_comments.length ? <ul className="feed-comment-list">{post.feed_comments.map(comment => {
+                  const person = people.find(item => item.id === comment.user_id) || { id: comment.user_id, first_name: comment.author_name };
+                  return <li key={comment.id} className={`feed-comment ${comment.parent_comment_id ? 'comment-reply' : ''}`}>
+                    <button type="button" className="comment-avatar-button" aria-label={`View ${comment.author_name}'s profile`} onClick={() => setSelectedMention(person)}><PersonAvatar person={person} /></button>
+                    <div className="comment-body">
+                      <div className="comment-byline"><button type="button" className="comment-author-name" onClick={() => setSelectedMention(person)}>{comment.author_name}</button><span aria-hidden="true">&middot;</span><time dateTime={comment.created_at} title={new Date(comment.created_at).toLocaleString()}>{formatDate(comment.created_at)}</time></div>
+                      {comment.content && <RichText text={comment.content} people={people} onMention={setSelectedMention} className="comment-content" />}
+                      {comment.media_path && (/\.(jpe?g|png|webp)$/i.test(comment.media_path) ? <a href={supabase.storage.from('feed-media').getPublicUrl(comment.media_path).data.publicUrl} target="_blank" rel="noopener noreferrer"><img className="comment-media" src={supabase.storage.from('feed-media').getPublicUrl(comment.media_path).data.publicUrl} alt="Comment photo" /></a> : <a className="comment-file-link" href={supabase.storage.from('feed-media').getPublicUrl(comment.media_path).data.publicUrl} target="_blank" rel="noopener noreferrer">Open file: {comment.media_path.split('/').pop().replace(/^[a-f0-9-]{36}-/, '')}</a>)}
+                      {comment.gif_url && <img className="comment-media" src={comment.gif_url} alt="GIF reply" />}
+                      {!post.comments_locked && <footer><button type="button" className="comment-reply-button" onClick={() => { setReplyingTo(current => ({ ...current, [post.id]: comment })); setCommentDrafts(current => ({ ...current, [post.id]: `@${comment.author_name} ` })); document.getElementById(`comment-${post.id}`)?.focus(); }}>Reply</button></footer>}
+                    </div>
+                  </li>;
+                })}</ul> : post.comments_loaded ? <p className="no-comments">No comments yet. Start the conversation.</p> : null}
+
+                {post.comments_locked?<p className="no-comments">A moderator has locked new comments on this post.</p>:<div className="comment-composer">{commentSendErrors[post.id] && <p className="comment-send-error" role="alert">{commentSendErrors[post.id]}</p>}<label htmlFor={`comment-${post.id}`}>Write a comment</label>{replyingTo[post.id]&&<div className="replying-banner"><span>Replying to {replyingTo[post.id].author_name}</span><button type="button" onClick={()=>setReplyingTo((current)=>({...current,[post.id]:null}))}>Cancel</button></div>}<div className="comment-input-row"><input id={`comment-${post.id}`} value={commentDrafts[post.id] || ''} maxLength="1000" placeholder="Write a comment. Type @ to mention someone." onChange={(event)=>{setCommentDrafts((current)=>({...current,[post.id]:event.target.value}));setMentionPost(hasMentionQuery(event.target.value)?post.id:'')}} onKeyDown={(event) => { if (event.key === 'Enter') addComment(post); }} /><button aria-label="Post comment" disabled={busyPost === post.id || (!commentDrafts[post.id]?.trim()&&!commentFiles[post.id]&&!commentGifs[post.id])} onClick={() => addComment(post)}>{busyPost === post.id ? <span>...</span> : <Icon name="send" />}</button></div>{mentionPost===post.id&&<div className="mention-picker mention-picker-under-input" role="listbox" aria-label="Mention an alumnus">{people.filter((person)=>person.id!==user.id&&mentionMatches(person,commentDrafts[post.id]||'')).slice(0,8).map((person)=><MentionOption person={person} key={person.id} onSelect={()=>addMention(post.id,person)}/>) }{!people.some((person)=>person.id!==user.id&&mentionMatches(person,commentDrafts[post.id]||''))&&<p>No matching alumni found.</p>}</div>}<CommentTools file={commentFiles[post.id]} gif={commentGifs[post.id]} disabled={busyPost === post.id} onFile={file => setCommentFiles(current => ({ ...current, [post.id]: file }))} onGif={gif => setCommentGifs(current => ({ ...current, [post.id]: gif }))} onEmoji={emoji => { setCommentDrafts(current => ({ ...current, [post.id]: `${current[post.id] || ''}${emoji}`.slice(0, 1000) })); document.getElementById(`comment-${post.id}`)?.focus(); }} /></div>}
               </section>}
             </article>;
           })}
           {!loading && hasMore && !savedOnly && !activeHashtag && <button className="feed-load-more" onClick={() => loadPosts(page + 1)}>Load more posts</button>}
         </section>
       </section>
-      {selectedMention&&<div className="mention-profile-backdrop" role="presentation" onMouseDown={(event)=>event.target===event.currentTarget&&setSelectedMention(null)}><section className="mention-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="mention-profile-name"><button className="mention-profile-close" type="button" aria-label="Close profile" onClick={()=>setSelectedMention(null)}>×</button><PersonAvatar person={selectedMention} className="mention-profile-avatar"/><p className="mention-profile-kicker">Alumni profile</p><h2 id="mention-profile-name">{[selectedMention.first_name,selectedMention.last_name].filter(Boolean).join(' ')}</h2><p className="mention-profile-role">Verified NDDU alumnus</p>{mentionProfileState==='loading'&&<p className="mention-profile-loading" role="status">Loading profile details…</p>}{mentionProfileState==='unavailable'&&<p className="mention-profile-loading">Additional profile details are unavailable.</p>}<div className="mention-social-summary"><strong>{selectedMention.friend_count||0} friends</strong><span>{selectedMention.mutual_count||0} mutual friends</span>{selectedMention.mutual_names?.length>0&&<small>Including {selectedMention.mutual_names.join(', ')}</small>}</div><dl>{selectedMention.degree&&<div><dt>Degree</dt><dd>{selectedMention.degree}</dd></div>}{selectedMention.course&&<div><dt>Course / program</dt><dd>{selectedMention.course}</dd></div>}{selectedMention.department&&<div><dt>Department</dt><dd>{selectedMention.department}</dd></div>}{selectedMention.graduation_year&&<div><dt>Graduated</dt><dd>Class of {selectedMention.graduation_year}</dd></div>}{selectedMention.batch_name&&<div><dt>Batch</dt><dd>{selectedMention.batch_name}</dd></div>}{selectedMention.honors&&<div><dt>Honors</dt><dd>{selectedMention.honors}</dd></div>}{selectedMention.job_title&&<div><dt>Position</dt><dd>{selectedMention.job_title}</dd></div>}{selectedMention.organization&&<div><dt>Organization</dt><dd>{selectedMention.organization}</dd></div>}</dl><footer className="mention-profile-actions"><button type="button" disabled={connectionBusy||selectedMention.connection_status==='requested'} onClick={changeConnection}>{selectedMention.connection_status==='friends'?'Friends':selectedMention.connection_status==='incoming'?'Accept request':selectedMention.connection_status==='requested'?'Request sent':'Add friend'}</button><button type="button" className="mention-message" onClick={()=>{onMessage?.(selectedMention);setSelectedMention(null)}}>Message</button></footer></section></div>}
+      {selectedMention&&<div className="mention-profile-backdrop" role="presentation" onMouseDown={(event)=>event.target===event.currentTarget&&setSelectedMention(null)}><section className="mention-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="mention-profile-name"><button className="mention-profile-close" type="button" aria-label="Close profile" onClick={()=>setSelectedMention(null)}>×</button><PersonAvatar person={selectedMention} className="mention-profile-avatar"/><p className="mention-profile-kicker">Alumni profile</p><h2 id="mention-profile-name">{[selectedMention.first_name,selectedMention.last_name].filter(Boolean).join(' ')}</h2><p className="mention-profile-role">Verified NDDU alumnus</p>{mentionProfileState==='loading'&&<p className="mention-profile-loading" role="status">Loading profile details…</p>}{mentionProfileState==='unavailable'&&<p className="mention-profile-loading">Additional profile details are unavailable.</p>}<div className="mention-social-summary"><strong>{selectedMention.friend_count||0} friends</strong><span>{selectedMention.mutual_count||0} mutual friends</span>{selectedMention.mutual_names?.length>0&&<small>Including {selectedMention.mutual_names.join(', ')}</small>}</div><dl>{selectedMention.degree&&<div><dt>Degree</dt><dd>{selectedMention.degree}</dd></div>}{selectedMention.course&&<div><dt>Course / program</dt><dd>{selectedMention.course}</dd></div>}{selectedMention.department&&<div><dt>Department</dt><dd>{selectedMention.department}</dd></div>}{selectedMention.graduation_year&&<div><dt>Graduated</dt><dd>Class of {selectedMention.graduation_year}</dd></div>}{selectedMention.batch_name&&<div><dt>Batch</dt><dd>{selectedMention.batch_name}</dd></div>}{selectedMention.honors&&<div><dt>Honors</dt><dd>{selectedMention.honors}</dd></div>}{selectedMention.job_title&&<div><dt>Position</dt><dd>{selectedMention.job_title}</dd></div>}{selectedMention.organization&&<div><dt>Organization</dt><dd>{selectedMention.organization}</dd></div>}</dl><footer className="mention-profile-actions" hidden={selectedMention.id === user?.id}><button type="button" disabled={connectionBusy||selectedMention.connection_status==='requested'} onClick={changeConnection}>{selectedMention.connection_status==='friends'?'Friends':selectedMention.connection_status==='incoming'?'Accept request':selectedMention.connection_status==='requested'?'Request sent':'Add friend'}</button><button type="button" className="mention-message" onClick={()=>{onMessage?.(selectedMention);setSelectedMention(null)}}>Message</button></footer></section></div>}
       {reporting && <div className="report-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setReporting(null)}><form className="report-dialog" role="dialog" aria-modal="true" aria-labelledby="report-title" onSubmit={reportPost}><header><h2 id="report-title">Report this post</h2><button type="button" aria-label="Close report form" onClick={() => setReporting(null)}>×</button></header><p>Your report is private and will be reviewed by an administrator.</p><label>Reason<select value={reportReason} onChange={(event) => setReportReason(event.target.value)}>{reportReasons.map((reason) => <option value={reason} key={reason}>{reason.replaceAll('_',' ')}</option>)}</select></label><label>Details (optional)<textarea autoFocus maxLength="1000" value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} /></label><footer><button type="button" onClick={() => setReporting(null)}>Cancel</button><button type="submit">Submit report</button></footer></form></div>}
       {editingPost&&<div className="report-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setEditingPost(null)}><form className="report-dialog" onSubmit={savePostEdit}><header><h2>Edit post</h2><button type="button" aria-label="Close edit form" onClick={()=>setEditingPost(null)}>×</button></header><label>Post text<textarea autoFocus maxLength="2000" value={editContent} onChange={event=>setEditContent(event.target.value)}/></label><small>{editContent.length} of 2,000 characters</small><footer><button type="button" onClick={()=>setEditingPost(null)}>Cancel</button><button disabled={busyPost===editingPost.id||(!editContent.trim()&&!editingPost.media_path&&!editingPost.gif_url)}>Save changes</button></footer></form></div>}
       {historyPost&&<div className="report-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setHistoryPost(null)}><section className="report-dialog edit-history-dialog" role="dialog" aria-modal="true"><header><h2>Edit history</h2><button type="button" aria-label="Close edit history" onClick={()=>setHistoryPost(null)}>×</button></header>{editHistory.length?<ol>{editHistory.map(entry=><li key={entry.id}><time>{new Date(entry.edited_at).toLocaleString()}</time><p>{entry.previous_content||'This version contained media only.'}</p></li>)}</ol>:<p>This post has no previous text versions.</p>}</section></div>}

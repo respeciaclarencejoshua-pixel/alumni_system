@@ -1,3 +1,4 @@
+import { useMessageInputSize } from '../lib/useMessageInputSize.js';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import './BatchGroups.css';
@@ -99,6 +100,7 @@ export default function BatchConversation({ group, user, kind = 'chat', initialA
     setBusy(true);setError('');
     try{await batchResult(emoji?supabase.rpc('react_batch_message',{p_message:entry.id,p_emoji:emoji}):supabase.rpc('unsend_batch_message',{p_message:entry.id}));setReactionMenu(null);setRevision(n=>n+1);}catch(e){setError(e.message);}finally{setBusy(false);}
   }
+  useMessageInputSize(inputRef, draft, `${group.id}:${canPost}:${kind}`);
   if(kind==='chat') return <section className="batch-messenger-body" aria-label="Batch conversation">
     {menuInHeader ? (menuTarget && createPortal(<ChatMenu chatKey={chatKey} group={group} user={user} members={members} settings={settings} onSettings={setSettings}/>,menuTarget)) : <div className="group-chat-options"><strong>{settings.name||group.name}</strong><ChatMenu chatKey={chatKey} group={group} user={user} members={members} settings={settings} onSettings={setSettings}/></div>}<ChatCover path={settings.cover}/><div className="messenger-messages" ref={logRef} onScroll={()=>{const el=logRef.current;if(el){followLatest.current=el.scrollHeight-el.scrollTop-el.clientHeight<60;if(followLatest.current)setNewMessages(false);}}}>
       {loading?<p role="status">Loading messages…</p>:!canRead?<p>{error?'Unable to check access. Please retry.':'Join this batch to chat.'}</p>:entries.length?entries.map(entry=>{
@@ -120,7 +122,7 @@ export default function BatchConversation({ group, user, kind = 'chat', initialA
     </div>
     {error&&<div className="messenger-error" role="alert">{error}<button type="button" onClick={()=>setRevision(n=>n+1)}>Retry</button></div>}
     {newMessages&&canRead&&<button className="batch-latest" type="button" onClick={()=>{followLatest.current=true;setNewMessages(false);if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;}}>New messages ↓</button>}
-    {canPost&&<GroupMedia onSend={sendMedia} disabled={busy} onError={setError}/>}
+    {canPost&&<GroupMedia onEmoji={emoji => setDraft(value => (value + emoji).slice(0,5000))} onSend={sendMedia} disabled={busy} onError={setError}/>}
     {canPost&&<form className="messenger-composer" onSubmit={send}>{replyTo&&<div className="batch-reply-compose"><div><strong>Replying to {memberName(members.find(p=>p.id===replyTo.author_id))}</strong><span>{entries.find(e=>e.id===replyTo.id)?.unsent_at?'Message unsent':replyTo.body.slice(0,120)}</span></div><button type="button" aria-label="Cancel reply" onClick={()=>setReplyTo(null)}>×</button></div>}<div className="composer-input"><textarea ref={inputRef} aria-label="Message your batch" placeholder="Message your batch…" value={draft} disabled={busy} onChange={e=>setDraft(e.target.value)} maxLength={5000} rows={1} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(draft.trim()&&!busy)e.currentTarget.form.requestSubmit();}}}/><button type="submit" disabled={busy||!draft.trim()} aria-label="Send message">➤</button></div></form>}
   </section>;
   return <section className={`batch-conversation ${kind==='announcement'?'batch-announcement-board':''}`} aria-label={kind==='chat'?'Batch group chat':kind==='announcement'?'Batch announcements':'Batch discussions'}>

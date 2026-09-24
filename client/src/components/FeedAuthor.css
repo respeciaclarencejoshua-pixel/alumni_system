@@ -1,0 +1,33 @@
+.feed-post .feed-author-identity { position: relative; min-width: 0; flex: 1; }
+.feed-post { position: relative; overflow: visible; }
+.feed-post:hover, .feed-post:focus-within { z-index: 30; }
+.feed-post .post-header > .post-options { flex: 0 0 auto; }
+.feed-author-button { display: flex; align-items: center; gap: 12px; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.feed-author-button > img, .feed-author-button > .mention-initials { display: grid; place-items: center; flex: 0 0 52px; width: 52px; height: 52px; border-radius: 50%; object-fit: cover; background: #012b09; color: white; font-size: 1.25rem; }
+.feed-author-button > span:not(.mention-initials) { min-width: 0; }
+.feed-author-button strong { display: block; font-size: 1.12rem; overflow-wrap: anywhere; }
+.feed-author-button:hover strong { color: #075c2d; }
+.feed-author-button:hover > img, .feed-author-button:hover > .mention-initials { box-shadow: 0 0 0 3px #dcebe1; }
+.feed-author-batch { display: block; color: #46664e; font-size: .95rem; overflow-wrap: anywhere; }
+.feed-author-identity > time { margin-left: 64px; }
+.feed-author-preview { display: none; position: absolute; left: 0; top: 100%; width: min(400px, calc(100vw - 64px)); z-index: 25; padding: 16px 12px 12px; border: 1px solid #cbd9ce; border-radius: 12px; background: #fff; color: #17231a; box-shadow: 0 8px 24px rgb(1 43 9 / 14%); }
+.feed-author-preview .author-preview-close { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 36px; height: 36px; min-height: 36px; padding: 0; border: 0; border-radius: 50%; background: #f0f5f1; color: #46664e; font-size: 1.5rem; cursor: pointer; }
+.author-preview-summary { display: flex; align-items: flex-start; gap: 16px; padding: 0 32px 16px 4px; }
+.feed-author-preview .author-preview-photo { flex: 0 0 88px; width: 88px; height: 88px; padding: 0; border: 2px solid #fdc800; border-radius: 50%; background: #012b09; overflow: hidden; cursor: pointer; }
+.author-preview-photo > img, .author-preview-photo > .mention-initials { display: grid; place-items: center; width: 100%; height: 100%; object-fit: cover; background: #012b09; color: #fff; font-size: 1.75rem; }
+.author-preview-copy { min-width: 0; }
+.author-preview-copy strong { display: block; margin-bottom: 10px; font-size: 1.125rem; line-height: 1.35; color: #012b09; overflow-wrap: anywhere; }
+.feed-author-preview .author-preview-copy p { margin: 5px 0 0; color: #46664e; font-size: .9375rem; line-height: 1.45; overflow-wrap: anywhere; }
+.feed-author-preview .author-preview-social { padding-top: 4px; color: #012b09; }
+.author-preview-actions { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid #e1e9e3; }
+.feed-author-preview .author-preview-actions button { display: flex; flex: 1; align-items: center; justify-content: center; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid #b7ccbd; border-radius: 6px; background: #fff; color: #012b09; font: inherit; font-size: .9375rem; font-weight: 700; cursor: pointer; }
+.feed-author-preview .author-preview-actions .author-preview-message { background: #075c2d; border-color: #075c2d; color: white; }
+.feed-author-preview .author-preview-actions .author-preview-action { flex: 0 0 auto; min-width: 44px; }
+.feed-author-preview .author-preview-actions button:hover { background: #edf5ef; }
+.feed-author-preview .author-preview-actions .author-preview-message:hover { background: #01451d; border-color: #01451d; }
+.feed-author-preview .author-preview-close:hover { background: #e1ebe4; }
+.feed-author-preview .author-preview-actions button:disabled { cursor: default; opacity: .65; }
+@media (max-width: 480px) { .author-preview-summary { gap: 10px; padding-left: 0; } .feed-author-preview .author-preview-photo { flex-basis: 60px; width: 60px; height: 60px; } .author-preview-copy strong { font-size: 1rem; } }
+@media (hover: hover) { .feed-author-identity:hover .feed-author-preview { display: block; } }
+.feed-author-identity:focus-within .feed-author-preview { display: block; }
+.mention-profile-actions[hidden] { display: none; }

@@ -1,18 +1,22 @@
 ﻿export const FEED_PAGE_SIZE = 10;
 export const COMMENT_PAGE_SIZE = 20;
-const reactionTypes = ['like', 'celebrate', 'support'];
+const reactionTypes = ['like', 'celebrate', 'support', 'laugh', 'wow', 'sad'];
 
 export function feedPageQuery(db, userId, cursor) {
   let query = db.from('feed_posts').select(`*,
     feed_reactions(user_id,reaction),feed_saved_posts(user_id),
     reaction_likes:feed_reactions(count),reaction_celebrates:feed_reactions(count),
-    reaction_supports:feed_reactions(count),comment_total:feed_comments(count)`)
+    reaction_supports:feed_reactions(count),reaction_laughs:feed_reactions(count),
+    reaction_wows:feed_reactions(count),reaction_sads:feed_reactions(count),comment_total:feed_comments(count)`)
     .eq('moderation_status', 'published').is('deleted_at', null)
     .eq('feed_reactions.user_id', userId)
     .eq('feed_saved_posts.user_id', userId)
     .eq('reaction_likes.reaction', 'like')
     .eq('reaction_celebrates.reaction', 'celebrate')
     .eq('reaction_supports.reaction', 'support')
+    .eq('reaction_laughs.reaction', 'laugh')
+    .eq('reaction_wows.reaction', 'wow')
+    .eq('reaction_sads.reaction', 'sad')
     .eq('comment_total.moderation_status', 'published')
     .order('created_at', { ascending: false }).order('id', { ascending: false })
     .limit(FEED_PAGE_SIZE + 1);
@@ -38,6 +42,9 @@ export function normalizeFeedPost(post) {
     feed_comments: post.feed_comments || [],
     comment_count: post.comment_total?.[0]?.count ?? post.feed_comments?.length ?? 0,
     reaction_counts: {
+      sad: post.reaction_sads?.[0]?.count ?? reactions.filter(item => item.reaction === 'sad').length,
+      wow: post.reaction_wows?.[0]?.count ?? reactions.filter(item => item.reaction === 'wow').length,
+      laugh: post.reaction_laughs?.[0]?.count ?? reactions.filter(item => item.reaction === 'laugh').length,
       like: post.reaction_likes?.[0]?.count ?? reactions.filter(item => item.reaction === 'like').length,
       celebrate: post.reaction_celebrates?.[0]?.count ?? reactions.filter(item => item.reaction === 'celebrate').length,
       support: post.reaction_supports?.[0]?.count ?? reactions.filter(item => item.reaction === 'support').length,

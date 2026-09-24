@@ -25,7 +25,7 @@ export default function TurnstileCaptcha({ onToken, resetKey, enabled = true }) 
     loadTurnstile().then(() => {
       if (!active || !containerRef.current) return;
       widgetId = window.turnstile.render(containerRef.current, {
-        sitekey: siteKey, theme: 'light', size: 'flexible',
+        sitekey: siteKey, theme: 'light', size: containerRef.current.clientWidth < 300 ? 'compact' : 'flexible',
         callback: (token) => onToken(token),
         'expired-callback': () => onToken(''),
         'error-callback': () => onToken(''),
