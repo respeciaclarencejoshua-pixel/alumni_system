@@ -210,3 +210,25 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .admin-shell .admin-nav button.selected { background: #164526; color: #ffe16a; }
   .admin-shell .admin-sidebar-brand { padding: 24px 8px 20px; }
 }
+
+.admin-drawer-heading > span, .admin-nav-copy small, .admin-nav-marker { display: none; }
+.admin-nav button .admin-nav-copy { width: auto; text-align: left; font-size: inherit; }
+@media (max-width: 1100px) {
+  .admin-shell .admin-drawer-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid #52765b; }
+  .admin-drawer-heading > span { display: block; color: #fff; letter-spacing: .04em; font-size: 1rem; }
+  .admin-drawer-heading strong { color: #fdc800; }
+  .admin-shell .admin-nav-close { width: auto; gap: 12px; background: transparent; }
+  .admin-shell .admin-sidebar-brand { padding: 22px 0 8px; border: 0; }
+  .admin-shell .admin-sidebar-brand > strong { display: none; }
+  .admin-shell .admin-sidebar-brand small { font-size: .9375rem !important; }
+  .admin-shell .admin-nav { flex-shrink: 0; gap: 2px; padding: 8px 0 24px; }
+  .admin-shell .admin-nav button { min-height: 76px; padding: 14px 12px; gap: 12px; }
+  .admin-shell .admin-nav-icon { display: none; }
+  .admin-shell .admin-nav-copy { display: grid; flex: 1; min-width: 0; gap: 5px; }
+  .admin-shell .admin-nav-copy strong { font-size: 1.25rem; line-height: 1.35; }
+  .admin-shell .admin-nav-copy small { display: block; color: #d2e1d5; font-size: .9375rem !important; line-height: 1.45; font-weight: 400; }
+  .admin-shell .admin-nav-marker { display: block; flex-shrink: 0; font-size: 1.25rem; }
+  .admin-shell .admin-user { flex-shrink: 0; padding-top: 20px; border-top: 1px solid #52765b; }
+  .admin-shell .admin-report { flex-shrink: 0; margin-top: 16px; }
+  .admin-shell .admin-nav-backdrop { backdrop-filter: blur(3px); }
+}

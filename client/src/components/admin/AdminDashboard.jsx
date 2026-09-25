@@ -25,6 +25,18 @@ const pages = [
   { icon: '+', label: 'Community & Requests', scope: 'dashboard', adminOnly: true, component: CommunityServices },
 ];
 
+const pageDescriptions = {
+  Dashboard: 'Overview and tasks needing attention',
+  Members: 'Find and manage alumni accounts',
+  'Alumni Verification': 'Review alumni documents and approvals',
+  'Opportunities & Events': 'Manage jobs and upcoming gatherings',
+  'Social & News': 'Review community posts and updates',
+  Analytics: 'View reports and community activity',
+  Settings: 'Manage website preferences',
+  'Help & Support': 'Respond to requests for help',
+  'Community & Requests': 'Manage groups and alumni services',
+};
+
 function hasPageAccess(page, scopes) {
   return page.scope ? scopes.includes(page.scope) : page.scopes.some((scope) => scopes.includes(scope));
 }
@@ -79,9 +91,9 @@ export default function AdminDashboard({ onSignOut, access }) {
     <div className="admin-mobile-bar"><button ref={menuRef} className="admin-mobile-menu" type="button" aria-expanded={navOpen} aria-controls="admin-navigation" onClick={() => setNavOpen((open) => !open)}>☰ <span>Admin menu</span></button><strong>{activePage}</strong></div>
     {navOpen && <button className="admin-nav-backdrop" aria-label="Close admin navigation" tabIndex={-1} onClick={() => setNavOpen(false)} />}
     <aside ref={navRef} className="admin-sidebar" id="admin-navigation">
-      <button className="admin-nav-close" onClick={() => setNavOpen(false)}>Close menu <span aria-hidden="true">&times;</span></button>
+      <div className="admin-drawer-heading"><span>NDDU <strong>ADMIN</strong></span><button className="admin-nav-close" onClick={() => setNavOpen(false)}>Close <span aria-hidden="true">&times;</span></button></div>
       <div className="admin-sidebar-brand"><strong>Admin menu</strong><small>Choose a section to manage</small></div>
-      <nav className="admin-nav" aria-label="Admin navigation">{availablePages.map((page) => <button className={activePage === page.label ? 'selected' : ''} aria-current={activePage === page.label ? 'page' : undefined} key={page.label} onClick={() => { setActivePage(page.label); setNavOpen(false); }}><span aria-hidden="true">{page.icon}</span>{page.label}{page.label==='Help & Support'&&supportCount>0&&<b className="nav-count" aria-label={`${supportCount} open support requests`}>{supportCount}</b>}{taskCounts[page.label] > 0 && <b className="nav-count" aria-label={`${taskCounts[page.label]} items need attention`}>{taskCounts[page.label]}</b>}</button>)}</nav>
+      <nav className="admin-nav" aria-label="Admin navigation">{availablePages.map((page) => <button aria-label={page.label} className={activePage === page.label ? 'selected' : ''} aria-current={activePage === page.label ? 'page' : undefined} key={page.label} onClick={() => { setActivePage(page.label); setNavOpen(false); }}><span className="admin-nav-icon" aria-hidden="true">{page.icon}</span><span className="admin-nav-copy"><strong>{page.label}</strong><small>{pageDescriptions[page.label]}</small></span><span className="admin-nav-marker" aria-hidden="true">{activePage === page.label ? '?' : '?'}</span>{page.label==='Help & Support'&&supportCount>0&&<b className="nav-count" aria-label={`${supportCount} open support requests`}>{supportCount}</b>}{taskCounts[page.label] > 0 && <b className="nav-count" aria-label={`${taskCounts[page.label]} items need attention`}>{taskCounts[page.label]}</b>}</button>)}</nav>
       <div className="admin-user"><b>{initials}</b><span><strong>{displayName}</strong><small>{roleName}</small></span></div>
       <button className="admin-report" onClick={onSignOut}>Sign out</button>
     </aside>
