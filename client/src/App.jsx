@@ -978,7 +978,7 @@ function App() {
         />
       )}
 
-      {user && verificationStatus === 'verified' && <Chat user={user} profile={accountProfile} contact={messageContact} onContactHandled={() => setMessageContact(null)} batchContact={batchChat} onBatchHandled={() => setBatchChat(null)} />}
+      {user && verificationStatus === 'verified' && <Chat key={user.id} user={user} profile={accountProfile} contact={messageContact} onContactHandled={() => setMessageContact(null)} batchContact={batchChat} onBatchHandled={() => setBatchChat(null)} />}
     </div>
   );
 }
