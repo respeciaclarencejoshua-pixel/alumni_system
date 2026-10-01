@@ -103,6 +103,7 @@ export default function Register({ onLogin, onClose }) {
       password,
       options: {
         ...(captchaEnabled ? { captchaToken } : {}),
+        emailRedirectTo: `${window.location.origin}/`,
         data: {
           first_name: firstName,
           last_name: lastName,

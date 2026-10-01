@@ -11,6 +11,9 @@
 .settings-modal {
   position: relative;
   width: min(100%, 560px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 34px;
   border-radius: 10px;
   background: #fff;
