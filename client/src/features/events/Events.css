@@ -817,6 +817,9 @@
 }
 
 .mini-event-card {
+  display: flex;
+  flex-direction: column;
+
   border-color: #d7e5dc;
 
   border-radius: 10px;
@@ -827,7 +830,9 @@
 }
 
 .mini-event-image {
-  min-height: 132px;
+  height: 240px;
+  min-height: 0;
+  flex: 0 0 240px;
 
   border: 0;
 
@@ -840,6 +845,19 @@
   color: #074c29;
 }
 
+.mini-event-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.mini-event-body h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .mini-event-meta {
   color: #147044;
 }
@@ -848,8 +866,16 @@
   color: #587766;
 }
 
+.mini-event-description {
+  min-height: 4.5em;
+}
+
 .register-button {
   background: #fff;
+}
+
+.mini-event-body .register-button {
+  margin-top: auto;
 }
 
 .other-session-list {
